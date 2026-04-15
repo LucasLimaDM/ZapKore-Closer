@@ -180,6 +180,46 @@ ${history}
 
     const result = await sendRes.json()
     const messageId = result?.key?.id || result?.id || crypto.randomUUID()
+    const actualRemoteJid = result?.key?.remoteJid
+
+    // Se enviamos para um @lid e a Evolution resolveu para um phone JID,
+    // atualiza o contato e contact_identity para evitar duplicatas futuras
+    if (
+      actualRemoteJid &&
+      actualRemoteJid.includes('@s.whatsapp.net') &&
+      contact.remote_jid.includes('@lid')
+    ) {
+      const canonicalPhone = actualRemoteJid.split('@')[0]
+      if (/^\d{8,15}$/.test(canonicalPhone)) {
+        console.log(`[AI Handler] Linking LID ${contact.remote_jid} → phone JID ${actualRemoteJid}`)
+        await supabase
+          .from('whatsapp_contacts')
+          .update({ remote_jid: actualRemoteJid, phone_number: canonicalPhone })
+          .eq('id', contactId)
+
+        const { data: existingIdentity } = await supabase
+          .from('contact_identity')
+          .select('id')
+          .eq('instance_id', integration.id)
+          .eq('canonical_phone', canonicalPhone)
+          .maybeSingle()
+
+        if (existingIdentity) {
+          await supabase
+            .from('contact_identity')
+            .update({ phone_jid: actualRemoteJid, lid_jid: contact.remote_jid })
+            .eq('id', existingIdentity.id)
+        } else {
+          await supabase.from('contact_identity').insert({
+            instance_id: integration.id,
+            user_id: userId,
+            canonical_phone: canonicalPhone,
+            phone_jid: actualRemoteJid,
+            lid_jid: contact.remote_jid,
+          })
+        }
+      }
+    }
 
     await supabase.from('whatsapp_messages').upsert(
       {

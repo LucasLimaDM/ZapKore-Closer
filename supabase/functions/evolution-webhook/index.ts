@@ -227,6 +227,18 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!contact) {
+        // Não criar novo contato para mensagens fromMe em JIDs desconhecidos.
+        // Evita duplicatas quando o webhook recebe o eco de mensagens enviadas
+        // pelo sistema para contatos @lid (Evolution resolve para phone JID).
+        if (fromMe) {
+          console.log(
+            `[WEBHOOK] Skip: fromMe message for unknown JID ${effectiveJid}, not creating contact.`,
+          )
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
         const { data: newContact } = await supabase
           .from('whatsapp_contacts')
           .insert({
