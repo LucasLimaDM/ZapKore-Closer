@@ -127,14 +127,16 @@ Deno.serve(async (req: Request) => {
             const chat = cList.find((c) => (c.remoteJid || c.jid || c.id) === jid)
             const canonicalPhone =
               identityMap.get(jid) || extractCanonicalPhone({ remoteJid: jid, ...chat })
-            const pushName =
+            const rawPushName =
               chat?.pushName ||
               chat?.name ||
               chat?.verifiedName ||
               chat?.contactName ||
               chat?.profileName ||
               chat?.displayName
-            const prefix = canonicalPhone || jid.split('@')[0]
+            // Evolution retorna o próprio número/LID como pushName quando não há nome salvo — descartar
+            const pushName =
+              rawPushName && !/^\d+$/.test(String(rawPushName).trim()) ? rawPushName : null
 
             let phone = canonicalPhone || null
             let effJid = canonicalPhone ? `${canonicalPhone}@s.whatsapp.net` : normalizeJid(jid)
@@ -257,8 +259,13 @@ Deno.serve(async (req: Request) => {
               /^\d+$/.test(currentContactName)
 
             if (isUnknownOrNumber) {
-              const incomingMsg = allMessages.find((m) => !m.key?.fromMe && m.pushName)
-              if (incomingMsg && incomingMsg.pushName) {
+              const incomingMsg = allMessages.find(
+                (m) =>
+                  !m.key?.fromMe &&
+                  m.pushName &&
+                  !/^\d+$/.test(String(m.pushName).trim()),
+              )
+              if (incomingMsg?.pushName) {
                 await supabaseClient
                   .from('whatsapp_contacts')
                   .update({ push_name: incomingMsg.pushName })

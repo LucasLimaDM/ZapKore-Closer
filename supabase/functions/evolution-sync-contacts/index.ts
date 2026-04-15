@@ -129,14 +129,16 @@ Deno.serve(async (req: Request) => {
             phoneJid = `${canonicalPhone}@s.whatsapp.net`
           }
 
-          const pushName =
+          const rawPushName =
             c.pushName ||
             c.name ||
             c.verifiedName ||
             c.contactName ||
             c.profileName ||
             c.displayName
-          const prefix = canonicalPhone || (jid ? jid.split('@')[0] : 'Unknown')
+          // Evolution retorna o próprio número/LID como pushName quando não há nome salvo — descartar
+          const pushName =
+            rawPushName && !/^\d+$/.test(String(rawPushName).trim()) ? rawPushName : null
 
           if (canonicalPhone) {
             const { data: existingIdentity } = await supabaseClient
