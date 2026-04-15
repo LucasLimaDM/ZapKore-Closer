@@ -42,6 +42,7 @@ export const useAgents = () => {
         system_prompt: agent.system_prompt!,
         gemini_api_key: agent.gemini_api_key!,
         is_active: agent.is_active,
+        is_default: agent.is_default,
       })
       .select()
       .single()
@@ -53,7 +54,11 @@ export const useAgents = () => {
     }
 
     toast.success('Agent created successfully')
-    setAgents((prev) => [data as AIAgent, ...prev])
+    if (agent.is_default) {
+      setAgents((prev) => [data as AIAgent, ...prev.map((a) => ({ ...a, is_default: false }))])
+    } else {
+      setAgents((prev) => [data as AIAgent, ...prev])
+    }
     return data
   }
 
@@ -67,6 +72,7 @@ export const useAgents = () => {
         system_prompt: agent.system_prompt,
         gemini_api_key: agent.gemini_api_key,
         is_active: agent.is_active,
+        is_default: agent.is_default,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -81,10 +87,15 @@ export const useAgents = () => {
     }
 
     toast.success('Agent updated successfully')
-    setAgents((prev) => prev.map((a) => (a.id === id ? (data as AIAgent) : a)))
+    if (agent.is_default) {
+      setAgents((prev) =>
+        prev.map((a) => (a.id === id ? (data as AIAgent) : { ...a, is_default: false })),
+      )
+    } else {
+      setAgents((prev) => prev.map((a) => (a.id === id ? (data as AIAgent) : a)))
+    }
     return data
   }
-
   const deleteAgent = async (id: string) => {
     if (!user) return
     const { error } = await supabase.from('ai_agents').delete().eq('id', id).eq('user_id', user.id)
@@ -117,6 +128,29 @@ export const useAgents = () => {
     setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, is_active: newStatus } : a)))
   }
 
+  const setAsDefault = async (id: string) => {
+    if (!user) return
+    const { error } = await supabase
+      .from('ai_agents')
+      .update({ is_default: true, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('Error setting default agent:', error)
+      toast.error('Failed to set default agent')
+      throw error
+    }
+
+    toast.success('Default agent updated')
+    setAgents((prev) =>
+      prev.map((a) => ({
+        ...a,
+        is_default: a.id === id,
+      })),
+    )
+  }
+
   return {
     agents,
     loading,
@@ -125,5 +159,6 @@ export const useAgents = () => {
     updateAgent,
     deleteAgent,
     toggleAgentStatus,
+    setAsDefault,
   }
 }

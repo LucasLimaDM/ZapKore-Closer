@@ -15,11 +15,19 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash2, Edit2, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Edit2, Loader2, Star } from 'lucide-react'
 import { AIAgent } from '@/lib/types'
 
 export default function Agents() {
-  const { agents, loading, createAgent, updateAgent, deleteAgent, toggleAgentStatus } = useAgents()
+  const {
+    agents,
+    loading,
+    createAgent,
+    updateAgent,
+    deleteAgent,
+    toggleAgentStatus,
+    setAsDefault,
+  } = useAgents()
   const { t } = useLanguage()
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -32,6 +40,7 @@ export default function Agents() {
     system_prompt: '',
     gemini_api_key: '',
     is_active: true,
+    is_default: false,
   })
 
   const handleOpenDialog = (agent?: AIAgent) => {
@@ -43,6 +52,7 @@ export default function Agents() {
         system_prompt: agent.system_prompt,
         gemini_api_key: agent.gemini_api_key,
         is_active: agent.is_active,
+        is_default: agent.is_default || false,
       })
     } else {
       setEditingAgent(null)
@@ -52,6 +62,7 @@ export default function Agents() {
         system_prompt: t('default_system_prompt'),
         gemini_api_key: '',
         is_active: true,
+        is_default: agents.length === 0,
       })
     }
     setIsDialogOpen(true)
@@ -139,24 +150,42 @@ export default function Agents() {
                   </p>
                 </div>
               </CardContent>
-              <div className="border-t border-border/40 bg-muted/10 p-4 flex justify-end gap-2 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-full font-semibold"
-                  onClick={() => handleOpenDialog(agent)}
-                >
-                  <Edit2 className="h-4 w-4 mr-2" />
-                  {t('edit')}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => deleteAgent(agent.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+              <div className="border-t border-border/40 bg-muted/10 p-4 flex justify-between items-center gap-2 shrink-0">
+                <div>
+                  {agent.is_default ? (
+                    <div className="flex items-center text-xs font-semibold text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-full">
+                      <Star className="h-3.5 w-3.5 mr-1.5 fill-current" />
+                      Default Agent
+                    </div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-full text-xs h-8 text-muted-foreground hover:text-foreground"
+                      onClick={() => setAsDefault(agent.id)}
+                    >
+                      Set as Default
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full font-semibold h-8 w-8 p-0"
+                    onClick={() => handleOpenDialog(agent)}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
+                    onClick={() => deleteAgent(agent.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}
@@ -237,6 +266,18 @@ export default function Agents() {
                 <Switch
                   checked={formData.is_active}
                   onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 bg-muted/40 rounded-2xl border border-border/60">
+                <div className="space-y-0.5">
+                  <Label className="font-semibold">Default Agent</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically assign this agent to new contacts.
+                  </p>
+                </div>
+                <Switch
+                  checked={formData.is_default}
+                  onCheckedChange={(checked) => setFormData({ ...formData, is_default: checked })}
                 />
               </div>
             </div>
