@@ -260,10 +260,7 @@ Deno.serve(async (req: Request) => {
 
             if (isUnknownOrNumber) {
               const incomingMsg = allMessages.find(
-                (m) =>
-                  !m.key?.fromMe &&
-                  m.pushName &&
-                  !/^\d+$/.test(String(m.pushName).trim()),
+                (m) => !m.key?.fromMe && m.pushName && !/^\d+$/.test(String(m.pushName).trim()),
               )
               if (incomingMsg?.pushName) {
                 await supabaseClient
