@@ -1,13 +1,13 @@
 {
   "_versions": {
-    "ai-classify-contacts": 7,
-    "ai-pipeline-monitor": 7,
-    "evolution-create-instance": 7,
-    "evolution-disconnect": 7,
-    "evolution-get-qr": 7,
-    "evolution-send-message": 7,
-    "evolution-sync-contacts": 8,
-    "evolution-sync-messages": 8,
-    "evolution-webhook": 8
+    "ai-classify-contacts": 8,
+    "ai-pipeline-monitor": 8,
+    "evolution-create-instance": 8,
+    "evolution-disconnect": 8,
+    "evolution-get-qr": 8,
+    "evolution-send-message": 8,
+    "evolution-sync-contacts": 10,
+    "evolution-sync-messages": 10,
+    "evolution-webhook": 10
   }
 }
