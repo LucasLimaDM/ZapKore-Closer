@@ -1,3 +1,12 @@
+export function normalizeJid(jid: string): string {
+  if (!jid) return jid
+  if (jid.includes('@s.whatsapp.net')) {
+    const phone = jid.split('@')[0].replace(/\D/g, '')
+    if (/^\d{8,15}$/.test(phone)) return `${phone}@s.whatsapp.net`
+  }
+  return jid
+}
+
 export function extractCanonicalPhone(data: any): string | null {
   if (!data) return null
   const fields = ['remoteJid', 'jid', 'phone', 'phoneNumber', 'wa_id', 'senderPn']

@@ -1,7 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
-import { extractCanonicalPhone, resolveLidToPhone } from '../_shared/utils.ts'
+import { extractCanonicalPhone, normalizeJid, resolveLidToPhone } from '../_shared/utils.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -122,7 +122,7 @@ Deno.serve(async (req: Request) => {
             canonicalPhone = await resolveLidToPhone(evoUrl, evoKey, integration.instance_name, jid)
           }
 
-          let phoneJid = jid && jid.includes('@s.whatsapp.net') ? jid : null
+          let phoneJid = jid && jid.includes('@s.whatsapp.net') ? normalizeJid(jid) : null
           let lidJid = jid && jid.includes('@lid') ? jid : null
 
           if (!phoneJid && canonicalPhone) {
@@ -182,7 +182,7 @@ Deno.serve(async (req: Request) => {
           }
 
           let effectivePhone = canonicalPhone || c.phoneNumber || null
-          let effectiveJid = phoneJid || jid
+          let effectiveJid = normalizeJid(phoneJid || jid)
 
           const matches = (existingContacts || []).filter((db) => {
             if (effectivePhone && db.phone_number === effectivePhone) return true
@@ -209,7 +209,8 @@ Deno.serve(async (req: Request) => {
             }
 
             const updatePayload: any = {}
-            if (pushName && pushName !== primary.push_name) updatePayload.push_name = pushName
+            if (pushName && !/^\d+$/.test(pushName) && pushName !== primary.push_name)
+              updatePayload.push_name = pushName
             if (c.profilePictureUrl && c.profilePictureUrl !== primary.profile_picture_url)
               updatePayload.profile_picture_url = c.profilePictureUrl
             if (effectivePhone && effectivePhone !== primary.phone_number)
@@ -235,7 +236,7 @@ Deno.serve(async (req: Request) => {
                 user_id: user.id,
                 remote_jid: effectiveJid,
                 phone_number: effectivePhone,
-                push_name: pushName || prefix,
+                push_name: pushName || null,
                 profile_picture_url: c.profilePictureUrl || c.profilePicUrl || null,
                 last_message_at: lastMsgAt,
               })

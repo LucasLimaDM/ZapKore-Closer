@@ -1,6 +1,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { extractCanonicalPhone, resolveLidToPhone } from '../_shared/utils.ts'
+import { extractCanonicalPhone, normalizeJid, resolveLidToPhone } from '../_shared/utils.ts'
 import { processAiResponse } from './ai-handler.ts'
 
 Deno.serve(async (req: Request) => {
@@ -194,8 +194,9 @@ Deno.serve(async (req: Request) => {
       }
 
       const effectivePhone = identity?.canonical_phone || canonicalPhone
-      const effectiveJid =
-        identity?.phone_jid || (effectivePhone ? `${effectivePhone}@s.whatsapp.net` : remoteJid)
+      const rawEffectiveJid =
+        (identity as any)?.phone_jid || (effectivePhone ? `${effectivePhone}@s.whatsapp.net` : remoteJid)
+      const effectiveJid = normalizeJid(rawEffectiveJid)
 
       let { data: contact } = await supabase
         .from('whatsapp_contacts')

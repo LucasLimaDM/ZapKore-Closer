@@ -1,7 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
-import { extractCanonicalPhone, resolveLidToPhone } from '../_shared/utils.ts'
+import { extractCanonicalPhone, normalizeJid, resolveLidToPhone } from '../_shared/utils.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
 
         const { data: dbContacts } = await supabaseClient
           .from('whatsapp_contacts')
-          .select('id, remote_jid, phone_number')
+          .select('id, remote_jid, phone_number, push_name')
           .eq('user_id', user.id)
 
         const contactMap = new Map<string, string>()
@@ -137,13 +137,13 @@ Deno.serve(async (req: Request) => {
             const prefix = canonicalPhone || jid.split('@')[0]
 
             let phone = canonicalPhone || null
-            let effJid = canonicalPhone ? `${canonicalPhone}@s.whatsapp.net` : jid
+            let effJid = canonicalPhone ? `${canonicalPhone}@s.whatsapp.net` : normalizeJid(jid)
 
             return {
               user_id: user.id,
               remote_jid: effJid,
               phone_number: phone,
-              push_name: pushName || prefix,
+              push_name: pushName || null,
             }
           })
           for (let i = 0; i < newContacts.length; i += 50) {
