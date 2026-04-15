@@ -1,4 +1,3 @@
-/* Avatar Component primitives - A component that displays an avatar - from shadcn/ui (exposes Avatar, AvatarImage, AvatarFallback) */
 import * as React from 'react'
 import * as AvatarPrimitive from '@radix-ui/react-avatar'
 
@@ -35,7 +34,7 @@ const AvatarFallback = React.forwardRef<
   <AvatarPrimitive.Fallback
     ref={ref}
     className={cn(
-      'flex h-full w-full items-center justify-center rounded-full bg-muted',
+      'flex h-full w-full items-center justify-center rounded-full bg-muted text-foreground font-semibold',
       className,
     )}
     {...props}

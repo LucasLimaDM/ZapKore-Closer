@@ -1,10 +1,8 @@
-/* Chart Component primitives to use with recharts - Always use charts inside a ChartContainer - from shadcn/ui (exposes ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, ChartStyle) */
 import * as React from 'react'
 import * as RechartsPrimitive from 'recharts'
 
 import { cn } from '@/lib/utils'
 
-// Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: '', dark: '.dark' } as const
 
 export type ChartConfig = {
@@ -152,7 +150,7 @@ const ChartTooltipContent = React.forwardRef<
         return null
       }
 
-      return <div className={cn('font-medium', labelClassName)}>{value}</div>
+      return <div className={cn('font-semibold text-foreground', labelClassName)}>{value}</div>
     }, [label, labelFormatter, payload, hideLabel, labelClassName, config, labelKey])
 
     if (!active || !payload?.length) {
@@ -165,7 +163,7 @@ const ChartTooltipContent = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          'grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl',
+          'grid min-w-[8rem] items-start gap-1.5 rounded-2xl border border-border bg-card px-4 py-3 text-xs shadow-elevation',
           className,
         )}
       >
@@ -220,12 +218,12 @@ const ChartTooltipContent = React.forwardRef<
                     >
                       <div className="grid gap-1.5">
                         {nestLabel ? tooltipLabel : null}
-                        <span className="text-muted-foreground">
+                        <span className="text-muted-foreground font-medium">
                           {itemConfig?.label || item.name}
                         </span>
                       </div>
                       {item.value && (
-                        <span className="font-mono font-medium tabular-nums text-foreground">
+                        <span className="font-mono font-bold tabular-nums text-foreground">
                           {item.value.toLocaleString()}
                         </span>
                       )}
@@ -276,7 +274,7 @@ const ChartLegendContent = React.forwardRef<
           <div
             key={item.value}
             className={cn(
-              'flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground',
+              'flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground font-medium',
             )}
           >
             {itemConfig?.icon && !hideIcon ? (
@@ -298,7 +296,6 @@ const ChartLegendContent = React.forwardRef<
 })
 ChartLegendContent.displayName = 'ChartLegend'
 
-// Helper to extract item config from a payload.
 function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key: string) {
   if (typeof payload !== 'object' || payload === null) {
     return undefined

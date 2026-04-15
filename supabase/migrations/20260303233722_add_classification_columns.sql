@@ -1,0 +1,4 @@
+ALTER TABLE public.whatsapp_contacts 
+ADD COLUMN IF NOT EXISTS classification TEXT,
+ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS ai_analysis_summary TEXT;
