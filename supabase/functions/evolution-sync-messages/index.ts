@@ -152,8 +152,11 @@ Deno.serve(async (req: Request) => {
             const pushName =
               rawPushName && !/^\d+$/.test(String(rawPushName).trim()) ? rawPushName : null
 
-            let phone = canonicalPhone || null
-            let effJid = canonicalPhone ? `${canonicalPhone}@s.whatsapp.net` : normalizeJid(jid)
+            const phone = canonicalPhone || null
+            // For unresolved LIDs, keep the LID as remote_jid; phone stays null.
+            const effJid = canonicalPhone
+              ? `${canonicalPhone}@s.whatsapp.net`
+              : (jid?.includes('@lid') ? jid : normalizeJid(jid))
 
             return {
               user_id: user.id,
