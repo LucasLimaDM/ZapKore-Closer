@@ -118,6 +118,15 @@ Deno.serve(async (req: Request) => {
 
           let canonicalPhone = extractCanonicalPhone(c)
 
+          // Extract phone from remoteJidAlt (avoids extra API call for LID contacts)
+          if (!canonicalPhone && jid && jid.includes('@lid')) {
+            const altJid = c.lastMessage?.key?.remoteJidAlt
+            if (altJid && altJid.includes('@s.whatsapp.net')) {
+              const altPhone = altJid.split('@')[0].replace(/\D/g, '')
+              if (/^\d{8,15}$/.test(altPhone)) canonicalPhone = altPhone
+            }
+          }
+
           if (jid && jid.includes('@lid') && !canonicalPhone && evoUrl && evoKey) {
             canonicalPhone = await resolveLidToPhone(evoUrl, evoKey, integration.instance_name, jid)
           }
@@ -152,7 +161,7 @@ Deno.serve(async (req: Request) => {
               const updates: any = {}
               if (lidJid && existingIdentity.lid_jid !== lidJid) updates.lid_jid = lidJid
               if (phoneJid && existingIdentity.phone_jid !== phoneJid) updates.phone_jid = phoneJid
-              if (pushName && !existingIdentity.display_name && pushName !== prefix)
+              if (pushName && !existingIdentity.display_name)
                 updates.display_name = pushName
               if (Object.keys(updates).length > 0) {
                 await supabaseClient

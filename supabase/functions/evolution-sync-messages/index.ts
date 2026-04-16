@@ -108,6 +108,20 @@ Deno.serve(async (req: Request) => {
         const missingJids = []
         for (const jid of validJids) {
           let canonicalPhone = identityMap.get(jid) || extractCanonicalPhone({ remoteJid: jid })
+
+          // Extract phone from remoteJidAlt (avoids extra API call for LID contacts)
+          if (!canonicalPhone && jid.includes('@lid')) {
+            const chat = cList.find((c: any) => (c.remoteJid || c.jid || c.id) === jid)
+            const altJid = chat?.lastMessage?.key?.remoteJidAlt
+            if (altJid && altJid.includes('@s.whatsapp.net')) {
+              const altPhone = altJid.split('@')[0].replace(/\D/g, '')
+              if (/^\d{8,15}$/.test(altPhone)) {
+                canonicalPhone = altPhone
+                identityMap.set(jid, canonicalPhone)
+              }
+            }
+          }
+
           if (!canonicalPhone && jid.includes('@lid') && evoUrl && evoKey) {
             canonicalPhone = await resolveLidToPhone(evoUrl, evoKey, integration.instance_name, jid)
             if (canonicalPhone) identityMap.set(jid, canonicalPhone)
@@ -177,6 +191,19 @@ Deno.serve(async (req: Request) => {
         for (const jid of validJids) {
           try {
             let canonicalPhone = identityMap.get(jid) || extractCanonicalPhone({ remoteJid: jid })
+
+            // Extract phone from remoteJidAlt (avoids extra API call for LID contacts)
+            if (!canonicalPhone && jid.includes('@lid')) {
+              const chat = cList.find((c: any) => (c.remoteJid || c.jid || c.id) === jid)
+              const altJid = chat?.lastMessage?.key?.remoteJidAlt
+              if (altJid && altJid.includes('@s.whatsapp.net')) {
+                const altPhone = altJid.split('@')[0].replace(/\D/g, '')
+                if (/^\d{8,15}$/.test(altPhone)) {
+                  canonicalPhone = altPhone
+                  identityMap.set(jid, canonicalPhone)
+                }
+              }
+            }
 
             if (!canonicalPhone && jid.includes('@lid') && evoUrl && evoKey) {
               canonicalPhone = await resolveLidToPhone(
