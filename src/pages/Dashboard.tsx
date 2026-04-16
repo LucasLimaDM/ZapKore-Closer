@@ -7,7 +7,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { RefreshCw, Loader2, Users, Flame, Activity, ArrowRight, MessageSquare, GitMerge } from 'lucide-react'
+import {
+  RefreshCw,
+  Loader2,
+  Users,
+  Flame,
+  Activity,
+  ArrowRight,
+  MessageSquare,
+  GitMerge,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'

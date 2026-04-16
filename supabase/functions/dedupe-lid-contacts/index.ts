@@ -145,27 +145,26 @@ Deno.serve(async (req: Request) => {
 
           try {
             // Fetch fromMe messages for this LID chat from Evolution
-            const msgRes = await fetch(
-              `${evoUrl}/chat/findMessages/${integration.instance_name}`,
-              {
-                method: 'POST',
-                headers: { apikey: evoKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  where: { key: { remoteJid: lid, fromMe: true } },
-                  sort: 'desc',
-                  page: 1,
-                  limit: 50,
-                }),
-              },
-            )
+            const msgRes = await fetch(`${evoUrl}/chat/findMessages/${integration.instance_name}`, {
+              method: 'POST',
+              headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                where: { key: { remoteJid: lid, fromMe: true } },
+                sort: 'desc',
+                page: 1,
+                limit: 50,
+              }),
+            })
 
             if (msgRes.ok) {
               const msgData = await msgRes.json()
               let messages: any[] = []
               if (Array.isArray(msgData)) messages = msgData
               else if (msgData?.messages?.records) messages = msgData.messages.records
-              else if (msgData?.messages && Array.isArray(msgData.messages)) messages = msgData.messages
-              else if (msgData?.records && Array.isArray(msgData.records)) messages = msgData.records
+              else if (msgData?.messages && Array.isArray(msgData.messages))
+                messages = msgData.messages
+              else if (msgData?.records && Array.isArray(msgData.records))
+                messages = msgData.records
               else if (msgData?.data && Array.isArray(msgData.data)) messages = msgData.data
 
               // Also extract phone from remoteJidAlt if Evolution returns it
@@ -274,10 +273,7 @@ Deno.serve(async (req: Request) => {
           .eq('id', job!.id)
       } catch (err) {
         console.error('[dedupe-lid] Background job failed:', err)
-        await supabase
-          .from('import_jobs')
-          .update({ status: 'failed' })
-          .eq('id', job!.id)
+        await supabase.from('import_jobs').update({ status: 'failed' }).eq('id', job!.id)
       }
     }
 

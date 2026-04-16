@@ -298,11 +298,7 @@ Deno.serve(async (req: Request) => {
 
           // If the inbound message reveals the phone number for an @lid contact,
           // link them via the shared helper so future messages and the UI converge.
-          if (
-            !fromMe &&
-            remoteJid?.includes('@lid') &&
-            remoteJidAlt?.includes('@s.whatsapp.net')
-          ) {
+          if (!fromMe && remoteJid?.includes('@lid') && remoteJidAlt?.includes('@s.whatsapp.net')) {
             const altPhone = remoteJidAlt.split('@')[0].replace(/\D/g, '')
             if (/^\d{8,15}$/.test(altPhone)) {
               const linkPromise = linkLidToPhone(supabase, {

@@ -193,7 +193,7 @@ Deno.serve(async (req: Request) => {
 
           let effectivePhone = canonicalPhone || c.phoneNumber || null
           // For unresolved LIDs we keep the LID as remote_jid; phone stays null.
-          let effectiveJid = phoneJid ? normalizeJid(phoneJid) : (jid || '')
+          let effectiveJid = phoneJid ? normalizeJid(phoneJid) : jid || ''
 
           const matches = (existingContacts || []).filter((db) => {
             if (effectivePhone && db.phone_number === effectivePhone) return true

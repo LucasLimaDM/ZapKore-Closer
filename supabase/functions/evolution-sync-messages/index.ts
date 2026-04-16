@@ -156,7 +156,9 @@ Deno.serve(async (req: Request) => {
             // For unresolved LIDs, keep the LID as remote_jid; phone stays null.
             const effJid = canonicalPhone
               ? `${canonicalPhone}@s.whatsapp.net`
-              : (jid?.includes('@lid') ? jid : normalizeJid(jid))
+              : jid?.includes('@lid')
+                ? jid
+                : normalizeJid(jid)
 
             return {
               user_id: user.id,

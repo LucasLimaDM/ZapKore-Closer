@@ -144,7 +144,9 @@ export default function Pipeline() {
                     <div className="flex items-start gap-3.5 flex-1 mb-4">
                       <Avatar className="h-11 w-11 border">
                         <AvatarImage src={c.profile_picture_url || ''} />
-                        <AvatarFallback>{getContactDisplayName(c, '').charAt(0) || '#'}</AvatarFallback>
+                        <AvatarFallback>
+                          {getContactDisplayName(c, '').charAt(0) || '#'}
+                        </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">

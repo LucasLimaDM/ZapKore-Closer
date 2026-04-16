@@ -22,9 +22,7 @@ export async function linkLidToPhone(
   const phoneJid = normalizeJid(args.phoneJid)
 
   if (!lidJid.includes('@lid') || !phoneJid.includes('@s.whatsapp.net')) {
-    console.warn(
-      `[linkLidToPhone] Skipped: invalid args lidJid=${lidJid} phoneJid=${phoneJid}`,
-    )
+    console.warn(`[linkLidToPhone] Skipped: invalid args lidJid=${lidJid} phoneJid=${phoneJid}`)
     return
   }
 
@@ -42,10 +40,7 @@ export async function linkLidToPhone(
     if (existingIdentity.phone_jid !== phoneJid) updates.phone_jid = phoneJid
     if (displayName && !existingIdentity.display_name) updates.display_name = displayName
     if (Object.keys(updates).length > 0) {
-      await supabase
-        .from('contact_identity')
-        .update(updates)
-        .eq('id', existingIdentity.id)
+      await supabase.from('contact_identity').update(updates).eq('id', existingIdentity.id)
     }
   } else {
     await supabase.from('contact_identity').insert({
@@ -93,10 +88,7 @@ export async function linkLidToPhone(
       carryOver.profile_picture_url = lidContact.profile_picture_url
     }
     if (Object.keys(carryOver).length > 0) {
-      await supabase
-        .from('whatsapp_contacts')
-        .update(carryOver)
-        .eq('id', phoneContact.id)
+      await supabase.from('whatsapp_contacts').update(carryOver).eq('id', phoneContact.id)
     }
     return
   }

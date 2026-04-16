@@ -17,6 +17,7 @@ pnpm format:check # oxfmt --check
 No test suite exists (`test` script is a no-op).
 
 To deploy an edge function:
+
 ```bash
 supabase functions deploy <function-name>
 ```
@@ -28,12 +29,14 @@ supabase functions deploy <function-name>
 **React 19 + Vite (rolldown-vite) + TypeScript + Tailwind CSS + shadcn/ui**
 
 Two root layouts defined in `App.tsx`:
+
 - `Layout` — wraps public routes (`/`, `/auth`)
 - `DashboardLayout` — wraps all `/app/*` and `/settings` routes; enforces auth and onboarding gate
 
 **Route guard logic** (`src/components/DashboardLayout.tsx`): unauthenticated → `/auth`; authenticated but `integration.is_setup_completed = false` → `/app/onboarding`; setup complete + on onboarding → `/app`.
 
 **Global context providers** (nested in `App.tsx`, outermost first):
+
 1. `LanguageProvider` — i18n via `src/lib/i18n/translations.ts`
 2. `AuthProvider` — Supabase auth session (`use-auth.tsx`)
 3. `IntegrationProvider` — fetches/creates `user_integrations` row on login, subscribes to realtime updates (`use-integration.ts`)

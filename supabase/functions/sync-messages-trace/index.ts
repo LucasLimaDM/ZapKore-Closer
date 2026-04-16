@@ -26,10 +26,17 @@ Deno.serve(async (req: Request) => {
       .single()
 
     const userId = integ.user_id
-    const evoUrl = (integ.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/$/, '')
+    const evoUrl = (integ.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(
+      /\/$/,
+      '',
+    )
     const evoKey = integ.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || ''
 
-    log('integration', { userId, instance: integ.instance_name, evoUrl: evoUrl ? 'SET' : 'MISSING' })
+    log('integration', {
+      userId,
+      instance: integ.instance_name,
+      evoUrl: evoUrl ? 'SET' : 'MISSING',
+    })
 
     // Find contact by jid
     const { data: contact } = await supabase
@@ -92,9 +99,7 @@ Deno.serve(async (req: Request) => {
         const messageId = m.key?.id
         if (!messageId) return null
         const text =
-          m.message?.conversation ||
-          m.message?.extendedTextMessage?.text ||
-          '[Media/Unsupported]'
+          m.message?.conversation || m.message?.extendedTextMessage?.text || '[Media/Unsupported]'
         let timestamp = new Date().toISOString()
         if (m.messageTimestamp) {
           const ts =
@@ -125,11 +130,20 @@ Deno.serve(async (req: Request) => {
     for (const row of mapped as any[]) dedupMap.set(row.message_id, row)
     const deduped = Array.from(dedupMap.values())
 
-    log('dedupe', { before: mapped.length, after: deduped.length, removed: mapped.length - deduped.length })
+    log('dedupe', {
+      before: mapped.length,
+      after: deduped.length,
+      removed: mapped.length - deduped.length,
+    })
 
     // Try to insert deduped chunk
     const testChunk = deduped.slice(0, 50)
-    const { data: inserted, error: insertError, status, statusText } = await supabase
+    const {
+      data: inserted,
+      error: insertError,
+      status,
+      statusText,
+    } = await supabase
       .from('whatsapp_messages')
       .upsert(testChunk, { onConflict: 'user_id,message_id' })
       .select()
