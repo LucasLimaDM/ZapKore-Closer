@@ -134,15 +134,14 @@ export default function Onboarding() {
       if (cData?.job_id) await pollJob(cData.job_id, 10)
 
       setSyncStatus(t('downloading_messages'))
-      setProgress(50)
+      setProgress(60)
       const { data: mData } = await supabase.functions.invoke('evolution-sync-messages')
       if (mData?.job_id) await pollJob(mData.job_id, 10)
 
-      setSyncStatus(t('ai_classifying'))
-      setProgress(75)
-
-      const { data: aData } = await supabase.functions.invoke('ai-classify-contacts')
-      if (aData?.job_id) await pollJob(aData.job_id, 10)
+      setSyncStatus('Removendo duplicatas...')
+      setProgress(85)
+      const { data: dData } = await supabase.functions.invoke('dedupe-lid-contacts')
+      if (dData?.job_id) await pollJob(dData.job_id, 10)
 
       setProgress(100)
       setSyncStatus(t('setup_complete') || 'Integração concluída! Redirecionando para o CRM...')

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { getContactDisplayName, getContactDisplaySubtitle } from '@/lib/format'
 import { useContacts } from '@/hooks/use-contacts'
 import { supabase } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/card'
@@ -51,11 +52,6 @@ export default function Pipeline() {
     }, 15000)
     return () => clearInterval(int)
   }, [contacts])
-
-  useEffect(() => {
-    const int = setInterval(() => supabase.functions.invoke('ai-pipeline-monitor'), 60000)
-    return () => clearInterval(int)
-  }, [])
 
   const handleMoveContact = async (contactId: string, newStage: string) => {
     if (contacts.find((c) => c.id === contactId)?.pipeline_stage === newStage) return
@@ -148,14 +144,14 @@ export default function Pipeline() {
                     <div className="flex items-start gap-3.5 flex-1 mb-4">
                       <Avatar className="h-11 w-11 border">
                         <AvatarImage src={c.profile_picture_url || ''} />
-                        <AvatarFallback>{c.push_name?.charAt(0) || '#'}</AvatarFallback>
+                        <AvatarFallback>{getContactDisplayName(c, '').charAt(0) || '#'}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-bold text-[15px] truncate group-hover:text-primary transition-colors">
-                          {c.push_name || 'Desconhecido'}
+                          {getContactDisplayName(c, 'Desconhecido')}
                         </h4>
                         <p className="text-[13px] font-medium text-muted-foreground truncate">
-                          {c.phone_number ? `+${c.phone_number}` : c.remote_jid.split('@')[0]}
+                          {getContactDisplaySubtitle(c, 'Número desconhecido')}
                         </p>
                         {c.classification && (
                           <Badge variant="outline" className="text-[10px] px-2 py-0.5 mt-1.5">

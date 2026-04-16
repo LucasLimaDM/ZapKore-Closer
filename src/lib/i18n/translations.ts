@@ -66,6 +66,7 @@ export const translations = {
     no_contacts_desc_all: 'No contacts available. Check your search or integration.',
     no_contacts_desc_filtered: 'No contacts classified as {tab}.',
     unknown: 'Unknown',
+    unknownNumber: 'Unknown number',
 
     settings: 'Settings',
     settings_desc: 'Manage your external API connections and WhatsApp instance.',
@@ -222,6 +223,7 @@ export const translations = {
     no_contacts_desc_all: 'Nenhum contato disponível. Verifique sua pesquisa ou integração.',
     no_contacts_desc_filtered: 'Nenhum contato classificado como {tab}.',
     unknown: 'Desconhecido',
+    unknownNumber: 'Número desconhecido',
 
     settings: 'Configurações',
     settings_desc: 'Gerencie suas conexões de API externas e instância do WhatsApp.',

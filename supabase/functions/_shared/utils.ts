@@ -9,7 +9,7 @@ export function normalizeJid(jid: string): string {
 
 export function extractCanonicalPhone(data: any): string | null {
   if (!data) return null
-  const fields = ['remoteJid', 'jid', 'phone', 'phoneNumber', 'wa_id', 'senderPn']
+  const fields = ['remoteJid', 'jid', 'phone', 'phoneNumber', 'wa_id', 'senderPn', 'remoteJidAlt']
   for (const field of fields) {
     const val = data[field]
     if (typeof val === 'string') {

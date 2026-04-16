@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getContactDisplayName, getContactDisplaySubtitle } from '@/lib/format'
 import { useContacts } from '@/hooks/use-contacts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -61,15 +62,15 @@ export function ContactFeed() {
                   <Avatar className="h-10 w-10 border border-border/40 shadow-sm">
                     <AvatarImage src={contact.profile_picture_url || ''} />
                     <AvatarFallback className="bg-zinc-100 text-zinc-600 font-medium text-sm">
-                      {contact.push_name ? contact.push_name.charAt(0).toUpperCase() : '#'}
+                      {getContactDisplayName(contact, '').charAt(0).toUpperCase() || '#'}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="font-semibold text-[14px] text-foreground tracking-tight truncate max-w-[150px] sm:max-w-[180px] group-hover:text-primary transition-colors">
-                      {contact.push_name || 'Unknown Contact'}
+                      {getContactDisplayName(contact, 'Unknown Contact')}
                     </p>
                     <p className="text-[12px] font-medium text-muted-foreground truncate max-w-[150px] sm:max-w-[180px]">
-                      {contact.remote_jid.split('@')[0]}
+                      {getContactDisplaySubtitle(contact, 'Unknown number')}
                     </p>
                   </div>
                 </div>

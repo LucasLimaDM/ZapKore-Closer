@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { linkLidToPhone } from '../_shared/contact-linking.ts'
 
 export async function processAiResponse(
   userId: string,
@@ -182,8 +183,7 @@ ${history}
     const messageId = result?.key?.id || result?.id || crypto.randomUUID()
     const actualRemoteJid = result?.key?.remoteJid
 
-    // Se enviamos para um @lid e a Evolution resolveu para um phone JID,
-    // atualiza o contato e contact_identity para evitar duplicatas futuras
+    // If Evolution resolved the LID to a phone JID, merge LID and phone contacts.
     if (
       actualRemoteJid &&
       actualRemoteJid.includes('@s.whatsapp.net') &&
@@ -191,34 +191,34 @@ ${history}
     ) {
       const canonicalPhone = actualRemoteJid.split('@')[0]
       if (/^\d{8,15}$/.test(canonicalPhone)) {
-        console.log(`[AI Handler] Linking LID ${contact.remote_jid} → phone JID ${actualRemoteJid}`)
-        await supabase
-          .from('whatsapp_contacts')
-          .update({ remote_jid: actualRemoteJid, phone_number: canonicalPhone })
-          .eq('id', contactId)
-
-        const { data: existingIdentity } = await supabase
-          .from('contact_identity')
-          .select('id')
-          .eq('instance_id', integration.id)
-          .eq('canonical_phone', canonicalPhone)
-          .maybeSingle()
-
-        if (existingIdentity) {
-          await supabase
-            .from('contact_identity')
-            .update({ phone_jid: actualRemoteJid, lid_jid: contact.remote_jid })
-            .eq('id', existingIdentity.id)
-        } else {
-          await supabase.from('contact_identity').insert({
-            instance_id: integration.id,
-            user_id: userId,
-            canonical_phone: canonicalPhone,
-            phone_jid: actualRemoteJid,
-            lid_jid: contact.remote_jid,
+        console.log(`[AI Handler] Linking LID ${contact.remote_jid} → phone ${actualRemoteJid}`)
+        try {
+          await linkLidToPhone(supabase, {
+            userId,
+            instanceId: integration.id,
+            lidJid: contact.remote_jid,
+            phoneJid: actualRemoteJid,
+            canonicalPhone,
           })
+        } catch (linkErr) {
+          console.error(`[AI Handler] linkLidToPhone failed:`, linkErr)
         }
       }
+    }
+
+    // After a possible merge, ensure contactId points at the surviving row.
+    if (
+      actualRemoteJid &&
+      actualRemoteJid.includes('@s.whatsapp.net') &&
+      contact.remote_jid.includes('@lid')
+    ) {
+      const { data: surviving } = await supabase
+        .from('whatsapp_contacts')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('remote_jid', actualRemoteJid)
+        .maybeSingle()
+      if (surviving) contactId = surviving.id
     }
 
     await supabase.from('whatsapp_messages').upsert(

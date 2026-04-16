@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { getContactDisplayName, getContactDisplaySubtitle } from '@/lib/format'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -193,17 +194,15 @@ export default function Chat() {
             <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border border-border shadow-sm">
               <AvatarImage src={contact.profile_picture_url || ''} />
               <AvatarFallback className="bg-muted text-foreground font-bold text-lg">
-                {contact.push_name?.charAt(0) || '#'}
+                {getContactDisplayName(contact, '').charAt(0) || '#'}
               </AvatarFallback>
             </Avatar>
             <div className="flex flex-col max-w-[140px] sm:max-w-[260px]">
               <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
-                {contact.push_name || t('unknown')}
+                {getContactDisplayName(contact, t('unknown'))}
               </span>
               <span className="text-[12px] sm:text-[13px] font-semibold text-muted-foreground truncate">
-                {contact.phone_number
-                  ? `+${contact.phone_number}`
-                  : contact.remote_jid.split('@')[0]}
+                {getContactDisplaySubtitle(contact, t('unknownNumber'))}
               </span>
             </div>
           </div>
@@ -266,7 +265,7 @@ export default function Chat() {
                             <Avatar className="h-8 w-8 border border-border/40 shadow-sm mb-1">
                               <AvatarImage src={contact.profile_picture_url || ''} />
                               <AvatarFallback className="bg-muted text-[10px] text-foreground font-bold">
-                                {contact.push_name?.charAt(0) || '#'}
+                                {getContactDisplayName(contact, '').charAt(0) || '#'}
                               </AvatarFallback>
                             </Avatar>
                           )}

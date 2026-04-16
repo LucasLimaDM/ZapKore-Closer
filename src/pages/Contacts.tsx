@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { getContactDisplayName, getContactDisplaySubtitle } from '@/lib/format'
 import { useContacts } from '@/hooks/use-contacts'
 import { useLanguage, TranslationKey } from '@/hooks/use-language'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -123,7 +124,7 @@ export default function Contacts() {
                   <Avatar className="h-14 w-14 border-2 border-background shadow-sm transition-transform duration-300 group-hover:scale-105">
                     <AvatarImage src={contact.profile_picture_url || ''} />
                     <AvatarFallback className="bg-muted text-foreground font-bold text-lg">
-                      {contact.push_name?.charAt(0) || '#'}
+                      {getContactDisplayName(contact, '').charAt(0) || '#'}
                     </AvatarFallback>
                   </Avatar>
                   <Button
@@ -141,12 +142,10 @@ export default function Contacts() {
 
                 <div className="mb-6 flex-1">
                   <h3 className="font-bold text-xl tracking-tight text-foreground line-clamp-1 mb-1 group-hover:text-primary transition-colors duration-300">
-                    {contact.push_name || t('unknown')}
+                    {getContactDisplayName(contact, t('unknown'))}
                   </h3>
                   <p className="text-sm font-semibold text-muted-foreground truncate">
-                    {contact.phone_number
-                      ? `+${contact.phone_number}`
-                      : contact.remote_jid.split('@')[0]}
+                    {getContactDisplaySubtitle(contact, t('unknownNumber'))}
                   </p>
                 </div>
 

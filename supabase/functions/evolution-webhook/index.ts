@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { extractCanonicalPhone, normalizeJid, resolveLidToPhone } from '../_shared/utils.ts'
+import { linkLidToPhone } from '../_shared/contact-linking.ts'
 import { processAiResponse } from './ai-handler.ts'
 
 Deno.serve(async (req: Request) => {
@@ -79,6 +80,7 @@ Deno.serve(async (req: Request) => {
       const remoteJid = key.remoteJid || msgObj.remoteJid || msgObj.jid
       const messageId = key.id || msgObj.id
       const fromMe = key.fromMe !== undefined ? key.fromMe : msgObj.fromMe || false
+      const remoteJidAlt: string | undefined = key.remoteJidAlt
 
       if (!remoteJid) {
         console.log(
@@ -293,6 +295,36 @@ Deno.serve(async (req: Request) => {
           console.log(
             `[WEBHOOK] Successfully saved message ${messageId} for contact ${contact.id} (remoteJid: ${effectiveJid})`,
           )
+
+          // If the inbound message reveals the phone number for an @lid contact,
+          // link them via the shared helper so future messages and the UI converge.
+          if (
+            !fromMe &&
+            remoteJid?.includes('@lid') &&
+            remoteJidAlt?.includes('@s.whatsapp.net')
+          ) {
+            const altPhone = remoteJidAlt.split('@')[0].replace(/\D/g, '')
+            if (/^\d{8,15}$/.test(altPhone)) {
+              const linkPromise = linkLidToPhone(supabase, {
+                userId,
+                instanceId: integ.id,
+                lidJid: remoteJid,
+                phoneJid: remoteJidAlt,
+                canonicalPhone: altPhone,
+                displayName: pushName !== 'Unknown' ? pushName : null,
+              }).catch((err) =>
+                console.error(`[WEBHOOK] linkLidToPhone failed for ${remoteJid}:`, err),
+              )
+
+              if (
+                typeof (globalThis as any).EdgeRuntime !== 'undefined' &&
+                typeof (globalThis as any).EdgeRuntime.waitUntil === 'function'
+              ) {
+                ;(globalThis as any).EdgeRuntime.waitUntil(linkPromise)
+              }
+              // else: linkPromise runs detached; Deno will await before isolate teardown
+            }
+          }
 
           if (fromMe) {
             console.log(

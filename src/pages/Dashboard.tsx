@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { getContactDisplayName } from '@/lib/format'
 import { useContacts } from '@/hooks/use-contacts'
 import { useLanguage, TranslationKey } from '@/hooks/use-language'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -6,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { RefreshCw, Loader2, Users, Flame, Activity, ArrowRight, MessageSquare } from 'lucide-react'
+import { RefreshCw, Loader2, Users, Flame, Activity, ArrowRight, MessageSquare, GitMerge } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
@@ -41,6 +42,7 @@ export default function Dashboard() {
   const { t, language } = useLanguage()
   const dateLocale = language === 'pt' ? ptBR : enUS
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isDeduping, setIsDeduping] = useState(false)
   const [syncProgress, setSyncProgress] = useState<{
     type: string
     total: number
@@ -104,12 +106,12 @@ export default function Dashboard() {
       if (messagesData?.error) throw new Error(messagesData.error)
       if (messagesData?.job_id) await pollJob(messagesData.job_id, 'messages')
 
-      setSyncProgress({ type: 'ai', total: 0, processed: 0, status: 'running' })
-      const { data: aiData, error: aiError } =
-        await supabase.functions.invoke('ai-classify-contacts')
-      if (aiError) throw aiError
-      if (aiData?.error) throw new Error(aiData.error)
-      if (aiData?.job_id) await pollJob(aiData.job_id, 'ai')
+      setSyncProgress({ type: 'dedupe', total: 0, processed: 0, status: 'running' })
+      const { data: dedupeData, error: dedupeError } =
+        await supabase.functions.invoke('dedupe-lid-contacts')
+      if (dedupeError) throw dedupeError
+      if (dedupeData?.error) throw new Error(dedupeData.error)
+      if (dedupeData?.job_id) await pollJob(dedupeData.job_id, 'dedupe')
 
       toast.success(t('sync_completed'))
     } catch (error: any) {
@@ -118,6 +120,23 @@ export default function Dashboard() {
     } finally {
       setIsSyncing(false)
       setSyncProgress(null)
+    }
+  }
+
+  const handleDedupe = async () => {
+    if (isDeduping) return
+    setIsDeduping(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('dedupe-lid-contacts')
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      if (data?.job_id) await pollJob(data.job_id, 'dedupe')
+      toast.success('Duplicatas removidas com sucesso')
+    } catch (error: any) {
+      console.error('Dedupe failed:', error)
+      toast.error(`Falha ao remover duplicatas: ${error.message}`)
+    } finally {
+      setIsDeduping(false)
     }
   }
 
@@ -155,22 +174,37 @@ export default function Dashboard() {
           <h2 className="text-4xl font-bold tracking-tight text-foreground">{t('overview')}</h2>
           <p className="text-muted-foreground mt-2 font-medium text-base">{t('crm_health')}</p>
         </div>
-        <Button
-          onClick={handleSync}
-          disabled={isSyncing}
-          variant="outline"
-          className="w-full sm:w-auto"
-        >
-          {isSyncing ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : (
-            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-          )}
-          {isSyncing ? t('syncing_data') : t('sync_data')}
-        </Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button
+            onClick={handleDedupe}
+            disabled={isDeduping || isSyncing}
+            variant="outline"
+            className="flex-1 sm:flex-none"
+          >
+            {isDeduping ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              <GitMerge className="h-4 w-4 text-muted-foreground" />
+            )}
+            {isDeduping ? 'Removendo...' : 'Remover Duplicatas'}
+          </Button>
+          <Button
+            onClick={handleSync}
+            disabled={isSyncing || isDeduping}
+            variant="outline"
+            className="flex-1 sm:flex-none"
+          >
+            {isSyncing ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              <RefreshCw className="h-4 w-4 text-muted-foreground" />
+            )}
+            {isSyncing ? t('syncing_data') : t('sync_data')}
+          </Button>
+        </div>
       </div>
 
-      {isSyncing && syncProgress && (
+      {(isSyncing || isDeduping) && syncProgress && (
         <Card className="animate-in fade-in slide-in-from-top-4">
           <CardContent className="p-8 flex flex-col gap-5">
             <div className="flex justify-between items-center text-sm font-semibold text-foreground">
@@ -182,7 +216,9 @@ export default function Dashboard() {
                   ? t('syncing_contacts')
                   : syncProgress.type === 'messages'
                     ? t('syncing_messages')
-                    : t('running_ai')}
+                    : syncProgress.type === 'dedupe'
+                      ? 'Removendo duplicatas...'
+                      : t('running_ai')}
               </span>
               <span className="text-muted-foreground font-semibold">
                 {syncProgress.total > 0
@@ -353,12 +389,12 @@ export default function Dashboard() {
                         <Avatar className="h-11 w-11 border-2 border-border shadow-sm">
                           <AvatarImage src={contact.profile_picture_url || ''} />
                           <AvatarFallback className="bg-muted text-foreground font-semibold text-sm">
-                            {contact.push_name?.charAt(0) || '#'}
+                            {getContactDisplayName(contact, '').charAt(0) || '#'}
                           </AvatarFallback>
                         </Avatar>
                         <div>
                           <p className="font-bold text-[15px] tracking-tight text-foreground group-hover:text-primary transition-colors">
-                            {contact.push_name || t('unknown')}
+                            {getContactDisplayName(contact, t('unknown'))}
                           </p>
                           <p className="text-[13px] text-muted-foreground font-semibold">
                             {contact.last_message_at
