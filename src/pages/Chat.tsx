@@ -21,6 +21,8 @@ import { toast } from 'sonner'
 import { format, isToday, isYesterday } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { useAudioPreloader } from '@/hooks/use-audio-preloader'
+import { AudioPlayer } from '@/components/chat/AudioPlayer'
 
 export default function Chat() {
   const { id } = useParams()
@@ -45,6 +47,8 @@ export default function Chat() {
 
   const [hasMore, setHasMore] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+
+  const audioMap = useAudioPreloader(messages)
 
   // Editing contact state
   const [isEditingContact, setIsEditingContact] = useState(false)
@@ -456,7 +460,15 @@ export default function Chat() {
                             : 'bg-card border border-border/60 text-foreground rounded-bl-sm',
                         )}
                       >
-                        <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+                        {msg.type === 'audioMessage' || msg.type === 'pttMessage' ? (
+                          <AudioPlayer
+                            blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
+                            isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
+                            fromMe={msg.from_me}
+                          />
+                        ) : (
+                          <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+                        )}
                         <span
                           className={cn(
                             'text-[10px] sm:text-[11px] mt-1.5 self-end font-bold opacity-70 tracking-tight',
