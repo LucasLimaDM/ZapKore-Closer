@@ -1,16 +1,16 @@
 {
   "_versions": {
-    "ai-classify-contacts": 21,
-    "ai-pipeline-monitor": 21,
-    "evolution-create-instance": 20,
-    "evolution-disconnect": 20,
-    "evolution-get-qr": 20,
-    "evolution-send-message": 20,
-    "evolution-sync-contacts": 28,
-    "evolution-sync-messages": 30,
-    "evolution-webhook": 26,
-    "evolution-debug": 12,
-    "dedupe-lid-contacts": 3,
-    "sync-messages-trace": 4
+    "ai-classify-contacts": 22,
+    "ai-pipeline-monitor": 22,
+    "evolution-create-instance": 21,
+    "evolution-disconnect": 21,
+    "evolution-get-qr": 21,
+    "evolution-send-message": 21,
+    "evolution-sync-contacts": 29,
+    "evolution-sync-messages": 31,
+    "evolution-webhook": 27,
+    "evolution-debug": 13,
+    "dedupe-lid-contacts": 4,
+    "sync-messages-trace": 5
   }
 }
