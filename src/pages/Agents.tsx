@@ -96,6 +96,7 @@ export default function Agents() {
     api_key_id: '',
     model_id: 'google/gemini-2.0-flash-lite:free',
     memory_limit: 20,
+    message_delay: 0,
     is_active: true,
     is_default: false,
   })
@@ -116,6 +117,7 @@ export default function Agents() {
         api_key_id: agent.api_key_id || '',
         model_id: agent.model_id || 'google/gemini-2.0-flash-lite:free',
         memory_limit: agent.memory_limit ?? 20,
+        message_delay: agent.message_delay ?? 0,
         is_active: agent.is_active,
         is_default: agent.is_default || false,
       })
@@ -128,6 +130,7 @@ export default function Agents() {
         api_key_id: apiKeys.length > 0 ? apiKeys[0].id : '',
         model_id: 'google/gemini-2.0-flash-lite:free',
         memory_limit: 20,
+        message_delay: 0,
         is_active: true,
         is_default: agents.length === 0,
       })
@@ -547,6 +550,28 @@ export default function Agents() {
                 />
                 <p className="text-[11px] text-muted-foreground font-medium">
                   {t('memory_limit_help')}
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="message_delay" className="font-semibold flex items-center justify-between">
+                  Delay entre mensagens
+                  <span className="text-[10px] text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-full">
+                    {formData.message_delay}s
+                  </span>
+                </Label>
+                <Input
+                  id="message_delay"
+                  type="number"
+                  min="0"
+                  max="30"
+                  step="1"
+                  value={formData.message_delay}
+                  onChange={(e) => setFormData({ ...formData, message_delay: parseInt(e.target.value) || 0 })}
+                  className="rounded-xl h-12"
+                />
+                <p className="text-[11px] text-muted-foreground font-medium">
+                  Tempo de espera após cada mensagem antes de responder. Se outra mensagem chegar dentro desse tempo, o timer reinicia.
                 </p>
               </div>
 
