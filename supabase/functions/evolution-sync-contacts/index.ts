@@ -107,6 +107,17 @@ Deno.serve(async (req: Request) => {
           .select('*')
           .eq('user_id', user.id)
 
+        const { data: identities } = await supabaseClient
+          .from('contact_identity')
+          .select('canonical_phone, lid_jid, phone_jid')
+          .eq('instance_id', integration.id)
+
+        const identityMap = new Map<string, string>()
+        ;(identities || []).forEach((id) => {
+          if (id.lid_jid && id.canonical_phone) identityMap.set(id.lid_jid, id.canonical_phone)
+          if (id.phone_jid && id.canonical_phone) identityMap.set(id.phone_jid, id.canonical_phone)
+        })
+
         let processed = 0
         await supabaseClient
           .from('import_jobs')
@@ -116,7 +127,7 @@ Deno.serve(async (req: Request) => {
         for (const c of validChats) {
           let jid = c.remoteJid || c.jid || c.id
 
-          let canonicalPhone = extractCanonicalPhone(c)
+          let canonicalPhone = identityMap.get(jid) || extractCanonicalPhone(c)
 
           // Extract phone from remoteJidAlt (avoids extra API call for LID contacts)
           if (!canonicalPhone && jid && jid.includes('@lid')) {
@@ -129,6 +140,7 @@ Deno.serve(async (req: Request) => {
 
           if (jid && jid.includes('@lid') && !canonicalPhone && evoUrl && evoKey) {
             canonicalPhone = await resolveLidToPhone(evoUrl, evoKey, integration.instance_name, jid)
+            if (canonicalPhone) identityMap.set(jid, canonicalPhone)
           }
 
           let phoneJid = jid && jid.includes('@s.whatsapp.net') ? normalizeJid(jid) : null

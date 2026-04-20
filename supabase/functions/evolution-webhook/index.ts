@@ -127,6 +127,8 @@ Deno.serve(async (req: Request) => {
           content.imageMessage?.caption ||
           content.videoMessage?.caption ||
           content.documentMessage?.caption ||
+          content.templateMessage?.hydratedTemplate?.hydratedContentText ||
+          content.templateMessage?.hydratedTemplate?.hydratedTitleText ||
           msgObj.text ||
           '[Media/Unsupported]'
 

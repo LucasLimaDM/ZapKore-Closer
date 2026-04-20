@@ -18,8 +18,9 @@ No test suite exists (`test` script is a no-op).
 
 To deploy an edge function:
 ```bash
-supabase functions deploy <function-name>
+supabase functions deploy <function-name> --no-verify-jwt
 ```
+**Always use `--no-verify-jwt`** — omitting it resets `verify_jwt` to `true` (Supabase default), causing the API gateway to return 401 before the function runs.
 
 ## Architecture
 
@@ -82,6 +83,56 @@ All edge functions use `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS) and have `veri
 
 `processAiResponse` fetches last 12 messages → calls Gemini 2.5 Flash → sends reply via Evolution API → saves reply to DB. AI processing is skipped if `ai_agent_id` is null on the contact.
 
-### JID Deduplication Pattern
+### Evolution API — Comportamento e Armadilhas
 
-WhatsApp can represent the same contact as either a phone JID (`<phone>@s.whatsapp.net`) or a LID JID (`<lid>@lid`). The webhook resolves these through `contact_identity` before looking up `whatsapp_contacts`, preventing duplicate contact rows. If a LID is seen, `resolveLidToPhone` queries Evolution API's `/chat/findContacts` endpoint.
+**Dois JIDs para o mesmo contato (causa raiz de duplicatas)**
+
+WhatsApp representa o mesmo contato de duas formas:
+- `<phone>@s.whatsapp.net` — JID canônico com número de telefone
+- `<lid>@lid` — JID opaco para contas business/API (não contém telefone)
+
+A Evolution API retorna **ambos como chats separados** em `/chat/findChats`. Se o código não cruzar as duas representações antes de criar contatos, o mesmo cliente aparece duplicado — um com número desconhecido (LID) e outro com telefone.
+
+**Tabela `contact_identity` — a fonte da verdade**
+
+Armazena o mapeamento `lid_jid ↔ phone_jid ↔ canonical_phone` por `instance_id`. Todo código que cria contatos **deve** consultar essa tabela antes de tentar resolver um LID. A sequência correta:
+
+1. `extractCanonicalPhone(data)` — extrai do payload se já houver campo de telefone
+2. Consultar `contact_identity` por `lid_jid` — usa o mapeamento já aprendido
+3. `resolveLidToPhone(evoUrl, evoKey, instance, lid)` — chama `/chat/findContacts` na Evolution API como último recurso
+4. Se ainda sem phone: gravar o contato com `remote_jid = lid` e `phone_number = null` (temporário)
+
+**`evolution-sync-contacts` vs `evolution-sync-messages`**
+
+Ambas criam contatos. `sync-messages` carrega `contact_identity` em um `identityMap` no início e o usa para resolver LIDs. **`sync-contacts` não faz isso** — é a causa de duplicatas quando Evolution retorna ambos os JIDs na lista de chats. Ao modificar qualquer uma, garantir que ambas usem `identityMap` de `contact_identity`.
+
+**`contact_identity` — quando é populada**
+
+- Pelo webhook (`evolution-webhook`) ao receber `messages.upsert` com um LID resolvido
+- Por `linkLidToPhone` (`_shared/contact-linking.ts`) quando `remoteJidAlt` revela o telefone
+- Pelo `sync-contacts` ao processar chats com `canonicalPhone` resolvido
+
+**Resolução de LID no webhook**
+
+`evolution-webhook` resolve LIDs na ordem:
+1. `extractCanonicalPhone` nos campos do payload (incluindo `remoteJidAlt`)
+2. `resolveLidToPhone` via Evolution API
+3. Busca em `contact_identity` por `lid_jid` ou `phone_jid`
+4. Se `identity` encontrada: usa `identity.phone_jid` como `effectiveJid` → evita criar contato com JID LID
+5. Se `remoteJidAlt` presente na mensagem inbound: dispara `linkLidToPhone` em background via `EdgeRuntime.waitUntil`
+
+**Campos inconsistentes da Evolution API**
+
+O payload de `messages.upsert` pode ter estruturas diferentes. O webhook normaliza:
+```
+payload.data → array ou objeto → msgObj
+msgObj.key.remoteJid | msgObj.remoteJid | msgObj.jid
+msgObj.pushName | msgObj.verifiedName | msgObj.name
+msgObj.messageTimestamp | msgObj.timestamp
+msgObj.message.conversation | .extendedTextMessage.text | .templateMessage...
+```
+`findChats` retorna `remoteJid | jid | id` e `pushName | name | verifiedName | contactName | profileName | displayName`. Evolution às vezes retorna o próprio número/LID como `pushName` — sempre filtrar com `!/^\d+$/.test(pushName)`.
+
+**`merge_whatsapp_contacts` RPC**
+
+Quando duplicatas são detectadas (LID + phone para o mesmo contato), `_shared/contact-linking.ts:linkLidToPhone` chama `merge_whatsapp_contacts(p_user_id, p_primary_contact_id, p_secondary_contact_ids[])` — migra mensagens e deleta o contato secundário. O primário é sempre o JID `@s.whatsapp.net`.
