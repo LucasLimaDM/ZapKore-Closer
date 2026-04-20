@@ -30,6 +30,7 @@ export interface AIAgent {
   api_key_id: string | null
   model_id: string
   memory_limit: number
+  message_delay: number
   is_active: boolean
   is_default?: boolean
   created_at: string

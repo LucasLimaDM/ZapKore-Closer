@@ -43,6 +43,7 @@ export const useAgents = () => {
         api_key_id: agent.api_key_id,
         model_id: agent.model_id || 'google/gemini-2.0-flash-lite:free',
         memory_limit: agent.memory_limit ?? 20,
+        message_delay: agent.message_delay ?? 0,
         is_active: agent.is_active,
         is_default: agent.is_default,
       })
@@ -75,6 +76,7 @@ export const useAgents = () => {
         api_key_id: agent.api_key_id,
         model_id: agent.model_id,
         memory_limit: agent.memory_limit,
+        message_delay: agent.message_delay,
         is_active: agent.is_active,
         is_default: agent.is_default,
         updated_at: new Date().toISOString(),
