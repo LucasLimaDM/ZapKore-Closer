@@ -1,5 +1,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from '@supabase/supabase-js'
+import OpenAI from 'npm:openai'
 import { corsHeaders } from '../_shared/cors.ts'
 
 Deno.serve(async (req: Request) => {
@@ -11,10 +12,7 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
-
-    if (!geminiApiKey) throw new Error('System Gemini API key missing')
-
+    
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     })
@@ -23,6 +21,22 @@ Deno.serve(async (req: Request) => {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
+
+    // Get the user's default agent to find the API key and model
+    const { data: agent } = await supabase
+      .from('ai_agents')
+      .select('*, user_api_keys(*)')
+      .eq('user_id', user.id)
+      .eq('is_default', true)
+      .maybeSingle()
+
+    // Fallback API Key: Agent's key -> System key (legacy var name for now if not set)
+    const apiKey = agent?.user_api_keys?.key || Deno.env.get('GEMINI_API_KEY') || Deno.env.get('OPENROUTER_API_KEY')
+    const modelId = agent?.model_id || 'google/gemini-2.0-flash-lite:free'
+
+    if (!apiKey) {
+      throw new Error('No API Key configured. Please add a connection in Agents settings.')
+    }
 
     const { data: integ } = await supabase
       .from('user_integrations')
@@ -212,52 +226,39 @@ Return ONLY a valid JSON object with no additional text:
 `
 
             try {
-              // Ensure we use a stable and valid endpoint to avoid 404s
-              const aiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${geminiApiKey}`
-              console.log(
-                `[AI Classifier] Calling Gemini API at v1beta/models/gemini-3.1-flash-lite-preview...`,
-              )
-              const aiRes = await fetch(aiUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  contents: [
-                    {
-                      role: 'user',
-                      parts: [
-                        { text: `${prompt}\n\n## CONVERSATION TO ANALYZE:\n${conversation}` },
-                      ],
-                    },
-                  ],
-                  generationConfig: {
-                    responseMimeType: 'application/json',
-                    temperature: 0.2,
-                  },
-                }),
+              console.log(`[AI Classifier] Calling AI with model: ${modelId}`)
+              
+              const openai = new OpenAI({
+                apiKey: apiKey,
+                baseURL: "https://openrouter.ai/api/v1",
+                defaultHeaders: {
+                  "HTTP-Referer": "https://zapkore-closer.com",
+                  "X-Title": "ZapKore Closer - Classifier",
+                }
               })
 
-              if (aiRes.ok) {
-                const aiData = await aiRes.json()
-                const textResponse = aiData.candidates?.[0]?.content?.parts?.[0]?.text
+              const completion = await openai.chat.completions.create({
+                model: modelId,
+                messages: [
+                  { role: 'system', content: prompt },
+                  { role: 'user', content: `## CONVERSATION TO ANALYZE:\n${conversation}` }
+                ],
+                response_format: { type: 'json_object' },
+                temperature: 0.2,
+              })
 
-                if (textResponse) {
-                  const result = JSON.parse(textResponse)
-                  await supabase
-                    .from('whatsapp_contacts')
-                    .update({
-                      classification: result.category,
-                      score: result.score,
-                      ai_analysis_summary: result.reasoning,
-                    })
-                    .eq('id', contact.id)
-                }
-              } else {
-                console.error(
-                  `Gemini API Error for contact ${contact.id}: Status ${aiRes.status} -`,
-                  await aiRes.text(),
-                )
+              const textResponse = completion.choices[0]?.message?.content
+
+              if (textResponse) {
+                const result = JSON.parse(textResponse)
+                await supabase
+                  .from('whatsapp_contacts')
+                  .update({
+                    classification: result.category,
+                    score: result.score,
+                    ai_analysis_summary: result.reasoning,
+                  })
+                  .eq('id', contact.id)
               }
             } catch (e) {
               console.error('Failed to classify contact', contact.id, e)

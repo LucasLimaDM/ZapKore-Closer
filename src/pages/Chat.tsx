@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Send, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowLeft, Send, Sparkles, Loader2, Edit2, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { format, isToday, isYesterday } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
@@ -36,6 +36,12 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Editing contact state
+  const [isEditingContact, setIsEditingContact] = useState(false)
+  const [editedName, setEditedName] = useState('')
+  const [editedPhone, setEditedPhone] = useState('')
+  const [isUpdatingContact, setIsUpdatingContact] = useState(false)
 
   useEffect(() => {
     if (!user || !id) return
@@ -67,13 +73,16 @@ export default function Chat() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'whatsapp_messages',
           filter: `contact_id=eq.${id}`,
         },
         (payload) => {
           setMessages((prev) => {
+            if (payload.eventType === 'UPDATE') {
+              return prev.map((m) => (m.id === payload.new.id ? (payload.new as WhatsAppMessage) : m))
+            }
             if (prev.find((m) => m.id === payload.new.id)) return prev
             return [...prev, payload.new as WhatsAppMessage]
           })
@@ -91,6 +100,33 @@ export default function Chat() {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, 100)
+  }
+
+  const startEditing = () => {
+    setIsEditingContact(true)
+    setEditedName(contact?.custom_name || contact?.push_name || '')
+    setEditedPhone(contact?.custom_phone || contact?.phone_number || contact?.remote_jid?.split('@')[0] || '')
+  }
+
+  const saveContactEdits = async () => {
+    if (!contact) return
+    setIsUpdatingContact(true)
+    const { error } = await supabase
+      .from('whatsapp_contacts')
+      .update({
+        custom_name: editedName.trim() || null,
+        custom_phone: editedPhone.replace(/\D/g, '') || null,
+      })
+      .eq('id', contact.id)
+
+    if (error) {
+      toast.error(t('error_save' as TranslationKey) || 'Failed to save changes')
+    } else {
+      setContact((prev) => (prev ? { ...prev, custom_name: editedName, custom_phone: editedPhone } : null))
+      toast.success(t('contact_updated' as TranslationKey) || 'Contact updated')
+      setIsEditingContact(false)
+    }
+    setIsUpdatingContact(false)
   }
 
   const handleAgentChange = async (value: string) => {
@@ -197,13 +233,47 @@ export default function Chat() {
                 {getContactDisplayName(contact, '').charAt(0) || '#'}
               </AvatarFallback>
             </Avatar>
-            <div className="flex flex-col max-w-[140px] sm:max-w-[260px]">
-              <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
-                {getContactDisplayName(contact, t('unknown'))}
-              </span>
-              <span className="text-[12px] sm:text-[13px] font-semibold text-muted-foreground truncate">
-                {getContactDisplaySubtitle(contact, t('unknownNumber'))}
-              </span>
+            <div className="flex flex-col max-w-[180px] sm:max-w-[260px] gap-0.5">
+              {isEditingContact ? (
+                <div className="flex flex-col gap-2">
+                  <Input
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    className="h-7 text-sm px-2 rounded-md"
+                    placeholder={t('agent_name_placeholder') || 'Name'}
+                  />
+                  <Input
+                    value={editedPhone}
+                    onChange={(e) => setEditedPhone(e.target.value)}
+                    className="h-7 text-sm px-2 rounded-md"
+                    placeholder="Phone"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
+                    {getContactDisplayName(contact, t('unknown'))}
+                  </span>
+                  <button onClick={startEditing} className="hover:text-primary transition-colors">
+                    <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                </div>
+              )}
+              {!isEditingContact && (
+                <span className="text-[12px] sm:text-[13px] font-semibold text-muted-foreground truncate">
+                  {getContactDisplaySubtitle(contact, t('unknownNumber'))}
+                </span>
+              )}
+              {isEditingContact && (
+                <div className="flex gap-1 mt-1">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 rounded-full" onClick={() => setIsEditingContact(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 rounded-full text-primary" onClick={saveContactEdits} disabled={isUpdatingContact}>
+                    {isUpdatingContact ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
