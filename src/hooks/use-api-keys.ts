@@ -40,6 +40,7 @@ export const useAPIKeys = () => {
         name: apiKey.name!,
         key: apiKey.key!,
         provider: apiKey.provider || 'openrouter',
+        key_type: apiKey.key_type || 'ai',
       })
       .select()
       .single()
@@ -68,8 +69,13 @@ export const useAPIKeys = () => {
     setAPIKeys((prev) => prev.filter((k) => k.id !== id))
   }
 
+  const audioKeys = apiKeys.filter((k) => k.key_type === 'audio')
+  const aiKeys = apiKeys.filter((k) => k.key_type !== 'audio')
+
   return {
     apiKeys,
+    aiKeys,
+    audioKeys,
     loading,
     refetch: fetchAPIKeys,
     createAPIKey,

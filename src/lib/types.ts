@@ -16,6 +16,7 @@ export interface UserAPIKey {
   name: string
   key: string
   provider: string
+  key_type: 'ai' | 'audio'
   settings?: any
   created_at: string
   updated_at: string
@@ -28,6 +29,7 @@ export interface AIAgent {
   description: string | null
   system_prompt: string
   api_key_id: string | null
+  audio_api_key_id: string | null
   model_id: string
   memory_limit: number
   message_delay: number
@@ -63,6 +65,7 @@ export interface WhatsAppMessage {
   from_me: boolean
   text: string | null
   type: string | null
+  transcript: string | null
   timestamp: string
   raw: any
 }

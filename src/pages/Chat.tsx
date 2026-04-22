@@ -479,6 +479,7 @@ export default function Chat() {
                             blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
                             isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
                             fromMe={msg.from_me}
+                            transcript={msg.transcript}
                           />
                         ) : msg.type === 'imageMessage' ? (
                           <ImageMessage

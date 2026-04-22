@@ -42,7 +42,8 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash2, Edit2, Loader2, Star, Check, Key, Globe, ShieldCheck, ChevronsUpDown } from 'lucide-react'
+import { Plus, Trash2, Edit2, Loader2, Star, Check, Key, Globe, ShieldCheck, ChevronsUpDown, Mic } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
 import { AIAgent, UserAPIKey } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -79,12 +80,13 @@ export default function Agents() {
     toggleAgentStatus,
     setAsDefault,
   } = useAgents()
-  const { apiKeys, loading: keysLoading, createAPIKey, deleteAPIKey } = useAPIKeys()
+  const { apiKeys, aiKeys, audioKeys, loading: keysLoading, createAPIKey, deleteAPIKey } = useAPIKeys()
   const { t } = useLanguage()
 
   const [activeTab, setActiveTab] = useState('agents')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isKeyDialogOpen, setIsKeyDialogOpen] = useState(false)
+  const [isAudioKeyDialogOpen, setIsAudioKeyDialogOpen] = useState(false)
   const [editingAgent, setEditingAgent] = useState<AIAgent | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isModelPopoverOpen, setIsModelPopoverOpen] = useState(false)
@@ -94,6 +96,7 @@ export default function Agents() {
     description: '',
     system_prompt: '',
     api_key_id: '',
+    audio_api_key_id: '',
     model_id: 'google/gemini-2.0-flash-lite:free',
     memory_limit: 20,
     message_delay: 0,
@@ -107,6 +110,11 @@ export default function Agents() {
     provider: 'openrouter',
   })
 
+  const [audioKeyFormData, setAudioKeyFormData] = useState({
+    name: '',
+    key: '',
+  })
+
   const handleOpenDialog = (agent?: AIAgent) => {
     if (agent) {
       setEditingAgent(agent)
@@ -115,6 +123,7 @@ export default function Agents() {
         description: agent.description || '',
         system_prompt: agent.system_prompt,
         api_key_id: agent.api_key_id || '',
+        audio_api_key_id: agent.audio_api_key_id || '',
         model_id: agent.model_id || 'google/gemini-2.0-flash-lite:free',
         memory_limit: agent.memory_limit ?? 20,
         message_delay: agent.message_delay ?? 0,
@@ -127,7 +136,8 @@ export default function Agents() {
         name: '',
         description: '',
         system_prompt: t('default_system_prompt'),
-        api_key_id: apiKeys.length > 0 ? apiKeys[0].id : '',
+        api_key_id: aiKeys.length > 0 ? aiKeys[0].id : '',
+        audio_api_key_id: '',
         model_id: 'google/gemini-2.0-flash-lite:free',
         memory_limit: 20,
         message_delay: 0,
@@ -147,14 +157,39 @@ export default function Agents() {
     setIsKeyDialogOpen(true)
   }
 
+  const handleOpenAudioKeyDialog = () => {
+    setAudioKeyFormData({ name: '', key: '' })
+    setIsAudioKeyDialogOpen(true)
+  }
+
+  const handleAudioKeySubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    try {
+      await createAPIKey({
+        name: audioKeyFormData.name,
+        key: audioKeyFormData.key,
+        provider: 'assemblyai',
+        key_type: 'audio',
+      })
+      setIsAudioKeyDialogOpen(false)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     try {
+      const payload = {
+        ...formData,
+        audio_api_key_id: formData.audio_api_key_id || null,
+      }
       if (editingAgent) {
-        await updateAgent(editingAgent.id, formData)
+        await updateAgent(editingAgent.id, payload)
       } else {
-        await createAgent(formData)
+        await createAgent(payload)
       }
       setIsDialogOpen(false)
     } finally {
@@ -166,7 +201,7 @@ export default function Agents() {
     e.preventDefault()
     setIsSubmitting(true)
     try {
-      const newKey = await createAPIKey(keyFormData)
+      const newKey = await createAPIKey({ ...keyFormData, key_type: 'ai' })
       if (newKey && !formData.api_key_id) {
         setFormData({ ...formData, api_key_id: newKey.id })
       }
@@ -176,9 +211,9 @@ export default function Agents() {
     }
   }
 
-  const selectedApiKey = useMemo(() => 
-    apiKeys.find((key) => key.id === formData.api_key_id),
-  [apiKeys, formData.api_key_id])
+  const selectedApiKey = useMemo(() =>
+    aiKeys.find((key) => key.id === formData.api_key_id),
+  [aiKeys, formData.api_key_id])
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 p-6 md:p-12 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple min-h-full bg-background">
@@ -269,7 +304,7 @@ export default function Agents() {
                       </div>
                       <div className="px-2.5 py-1 bg-muted/50 border border-border/40 rounded-lg text-[10px] font-medium text-muted-foreground uppercase tracking-tight flex items-center gap-1">
                         <Key className="h-3 w-3" />
-                        {apiKeys.find(k => k.id === agent.api_key_id)?.name || 'Sem Conexão'}
+                        {aiKeys.find(k => k.id === agent.api_key_id)?.name || 'Sem Conexão'}
                       </div>
                     </div>
 
@@ -322,80 +357,176 @@ export default function Agents() {
           )}
         </TabsContent>
 
-        <TabsContent value="connections" className="space-y-8 outline-none">
-          <div className="flex justify-end">
-            <Button
-              onClick={handleOpenKeyDialog}
-              className="rounded-full shadow-subtle px-6 h-12 font-semibold"
-            >
-              <Plus className="mr-2 h-5 w-5" />
-              Nova Conexão
-            </Button>
+        <TabsContent value="connections" className="space-y-10 outline-none">
+          {/* AI Model Keys */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold tracking-tight flex items-center gap-2">
+                  <Key className="h-5 w-5 text-primary" />
+                  Modelos de IA
+                </h3>
+                <p className="text-sm text-muted-foreground mt-0.5">Chaves de API para provedores de linguagem (OpenRouter, OpenAI, etc.)</p>
+              </div>
+              <Button
+                onClick={handleOpenKeyDialog}
+                className="rounded-full shadow-subtle px-6 h-12 font-semibold"
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                Nova Conexão
+              </Button>
+            </div>
+
+            {keysLoading ? (
+              <div className="flex justify-center p-12">
+                <Loader2 className="h-10 w-10 animate-spin text-muted-foreground/50" />
+              </div>
+            ) : aiKeys.length === 0 ? (
+              <Card className="border-dashed border-border bg-transparent shadow-none">
+                <CardContent className="flex flex-col items-center justify-center p-16 text-center">
+                  <div className="h-14 w-14 bg-muted rounded-3xl flex items-center justify-center mb-5">
+                    <Key className="h-7 w-7 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-bold text-foreground mb-2">Nenhuma conexão de IA configurada</h3>
+                  <p className="text-muted-foreground max-w-sm mb-5 text-sm">
+                    Adicione uma chave de API para conectar seus agentes à inteligência artificial.
+                  </p>
+                  <Button onClick={handleOpenKeyDialog} variant="outline" className="rounded-full">
+                    Adicionar Primeira Conexão
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {aiKeys.map((key) => (
+                  <Card
+                    key={key.id}
+                    className="shadow-subtle border border-border/40 rounded-[2rem] overflow-hidden group hover:shadow-elevation transition-all duration-300"
+                  >
+                    <CardHeader className="pb-4">
+                      <div className="flex justify-between items-start">
+                        <div className="h-12 w-12 bg-primary/5 rounded-2xl flex items-center justify-center text-primary border border-primary/10">
+                          <Key className="h-6 w-6" />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
+                          onClick={() => deleteAPIKey(key.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="mt-4">
+                        <CardTitle className="text-lg tracking-tight">{key.name}</CardTitle>
+                        <CardDescription className="text-xs font-semibold mt-1 uppercase tracking-wider flex items-center gap-2">
+                          <Globe className="h-3 w-3" />
+                          {key.provider}
+                        </CardDescription>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pb-6">
+                      <div className="p-3 bg-muted/40 rounded-xl border border-border/40 font-mono text-xs text-muted-foreground flex items-center justify-between">
+                        <span className="truncate max-w-[140px]">
+                          {key.key.substring(0, 8)}••••••••••••••••
+                        </span>
+                        <ShieldCheck className="h-4 w-4 text-emerald-500/50 shrink-0" />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-3 font-medium">
+                        Criada em {new Date(key.created_at).toLocaleDateString()}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
 
-          {keysLoading ? (
-            <div className="flex justify-center p-24">
-              <Loader2 className="h-10 w-10 animate-spin text-muted-foreground/50" />
+          <Separator />
+
+          {/* Audio Transcription Keys */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold tracking-tight flex items-center gap-2">
+                  <Mic className="h-5 w-5 text-primary" />
+                  Áudio & Transcrição
+                </h3>
+                <p className="text-sm text-muted-foreground mt-0.5">Chave AssemblyAI para transcrição automática de mensagens de voz</p>
+              </div>
+              <Button
+                onClick={handleOpenAudioKeyDialog}
+                className="rounded-full shadow-subtle px-6 h-12 font-semibold"
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                Nova Chave de Áudio
+              </Button>
             </div>
-          ) : apiKeys.length === 0 ? (
-            <Card className="border-dashed border-border bg-transparent shadow-none">
-              <CardContent className="flex flex-col items-center justify-center p-20 text-center">
-                <div className="h-16 w-16 bg-muted rounded-3xl flex items-center justify-center mb-6">
-                  <Key className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-bold text-foreground mb-2">Nenhuma conexão configurada</h3>
-                <p className="text-muted-foreground max-w-sm mb-6">
-                  Adicione uma chave de API (OpenRouter, OpenAI, etc) para conectar seus agentes à inteligência artificial.
-                </p>
-                <Button onClick={handleOpenKeyDialog} variant="outline" className="rounded-full">
-                  Adicionar Primeira Conexão
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {apiKeys.map((key) => (
-                <Card
-                  key={key.id}
-                  className="shadow-subtle border border-border/40 rounded-[2rem] overflow-hidden group hover:shadow-elevation transition-all duration-300"
-                >
-                  <CardHeader className="pb-4">
-                    <div className="flex justify-between items-start">
-                      <div className="h-12 w-12 bg-primary/5 rounded-2xl flex items-center justify-center text-primary border border-primary/10">
-                        <Key className="h-6 w-6" />
+
+            {keysLoading ? (
+              <div className="flex justify-center p-12">
+                <Loader2 className="h-10 w-10 animate-spin text-muted-foreground/50" />
+              </div>
+            ) : audioKeys.length === 0 ? (
+              <Card className="border-dashed border-border bg-transparent shadow-none">
+                <CardContent className="flex flex-col items-center justify-center p-16 text-center">
+                  <div className="h-14 w-14 bg-muted rounded-3xl flex items-center justify-center mb-5">
+                    <Mic className="h-7 w-7 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-bold text-foreground mb-2">Nenhuma chave de áudio configurada</h3>
+                  <p className="text-muted-foreground max-w-sm mb-5 text-sm">
+                    Adicione sua chave AssemblyAI para habilitar transcrição automática de áudios do WhatsApp.
+                  </p>
+                  <Button onClick={handleOpenAudioKeyDialog} variant="outline" className="rounded-full">
+                    Configurar AssemblyAI
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {audioKeys.map((key) => (
+                  <Card
+                    key={key.id}
+                    className="shadow-subtle border border-border/40 rounded-[2rem] overflow-hidden group hover:shadow-elevation transition-all duration-300"
+                  >
+                    <CardHeader className="pb-4">
+                      <div className="flex justify-between items-start">
+                        <div className="h-12 w-12 bg-violet-500/10 rounded-2xl flex items-center justify-center text-violet-500 border border-violet-500/20">
+                          <Mic className="h-6 w-6" />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
+                          onClick={() => deleteAPIKey(key.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
-                        onClick={() => deleteAPIKey(key.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="mt-4">
-                      <CardTitle className="text-lg tracking-tight">{key.name}</CardTitle>
-                      <CardDescription className="text-xs font-semibold mt-1 uppercase tracking-wider flex items-center gap-2">
-                        <Globe className="h-3 w-3" />
-                        {key.provider}
-                      </CardDescription>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pb-6">
-                    <div className="p-3 bg-muted/40 rounded-xl border border-border/40 font-mono text-xs text-muted-foreground flex items-center justify-between">
-                      <span className="truncate max-w-[140px]">
-                        {key.key.substring(0, 8)}••••••••••••••••
-                      </span>
-                      <ShieldCheck className="h-4 w-4 text-emerald-500/50 shrink-0" />
-                    </div>
-                    <p className="text-[10px] text-muted-foreground mt-3 font-medium">
-                      Criada em {new Date(key.created_at).toLocaleDateString()}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+                      <div className="mt-4">
+                        <CardTitle className="text-lg tracking-tight">{key.name}</CardTitle>
+                        <CardDescription className="text-xs font-semibold mt-1 uppercase tracking-wider flex items-center gap-2">
+                          <Mic className="h-3 w-3" />
+                          AssemblyAI
+                        </CardDescription>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pb-6">
+                      <div className="p-3 bg-muted/40 rounded-xl border border-border/40 font-mono text-xs text-muted-foreground flex items-center justify-between">
+                        <span className="truncate max-w-[140px]">
+                          {key.key.substring(0, 8)}••••••••••••••••
+                        </span>
+                        <ShieldCheck className="h-4 w-4 text-emerald-500/50 shrink-0" />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-3 font-medium">
+                        Criada em {new Date(key.created_at).toLocaleDateString()}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -491,9 +622,9 @@ export default function Agents() {
                 <div className="space-y-3">
                   <Label className="font-semibold flex justify-between items-center">
                     {t('api_key_label')}
-                    <Button 
-                      type="button" 
-                      variant="link" 
+                    <Button
+                      type="button"
+                      variant="link"
                       className="h-auto p-0 text-[11px] font-bold text-primary"
                       onClick={handleOpenKeyDialog}
                     >
@@ -508,13 +639,13 @@ export default function Agents() {
                       <SelectValue placeholder="Selecione uma conexão" />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl">
-                      {apiKeys.length === 0 && (
+                      {aiKeys.length === 0 && (
                         <div className="p-4 text-center">
                           <p className="text-xs text-muted-foreground mb-2">Sem conexões salvas</p>
-                          <Button 
-                            type="button" 
-                            size="sm" 
-                            variant="outline" 
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
                             className="w-full rounded-full h-8 text-[10px]"
                             onClick={handleOpenKeyDialog}
                           >
@@ -522,7 +653,39 @@ export default function Agents() {
                           </Button>
                         </div>
                       )}
-                      {apiKeys.map((key) => (
+                      {aiKeys.map((key) => (
+                        <SelectItem key={key.id} value={key.id} className="rounded-lg">
+                          {key.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-3">
+                  <Label className="font-semibold flex justify-between items-center">
+                    <span className="flex items-center gap-1.5"><Mic className="h-3.5 w-3.5" /> Transcrição de Áudio</span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-[11px] font-bold text-primary"
+                      onClick={handleOpenAudioKeyDialog}
+                    >
+                      + Nova Chave
+                    </Button>
+                  </Label>
+                  <Select
+                    value={formData.audio_api_key_id}
+                    onValueChange={(value) => setFormData({ ...formData, audio_api_key_id: value })}
+                  >
+                    <SelectTrigger className="rounded-xl h-12 shadow-sm border-border/60">
+                      <SelectValue placeholder="Sem transcrição (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                      <SelectItem value="" className="rounded-lg text-muted-foreground">
+                        Sem transcrição
+                      </SelectItem>
+                      {audioKeys.map((key) => (
                         <SelectItem key={key.id} value={key.id} className="rounded-lg">
                           {key.name}
                         </SelectItem>
@@ -631,6 +794,103 @@ export default function Agents() {
               >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {editingAgent ? t('save_changes') : t('create_agent')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* AUDIO KEY DIALOG */}
+      <Dialog open={isAudioKeyDialogOpen} onOpenChange={setIsAudioKeyDialogOpen}>
+        <DialogContent className="sm:max-w-[560px] rounded-[2.5rem] p-0 overflow-hidden border-border/60 shadow-2xl">
+          <form onSubmit={handleAudioKeySubmit} className="flex flex-col">
+            <DialogHeader className="p-8 md:p-10 pb-6 border-b border-border/40 bg-muted/20 relative">
+              <div className="h-14 w-14 bg-violet-500/10 rounded-2xl flex items-center justify-center text-violet-500 shadow-lg mb-6 border border-violet-500/20">
+                <Mic className="h-7 w-7" />
+              </div>
+              <DialogTitle className="text-3xl font-bold tracking-tight">
+                Configurar AssemblyAI
+              </DialogTitle>
+              <DialogDescription className="text-base">
+                Adicione sua chave de API do AssemblyAI para habilitar transcrição automática de áudios.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="p-8 md:p-10 grid grid-cols-1 md:grid-cols-5 gap-10">
+              <div className="md:col-span-3 space-y-8">
+                <div className="space-y-3">
+                  <Label htmlFor="audio_key_name" className="font-bold text-sm uppercase tracking-wider text-muted-foreground">
+                    Nome da Chave
+                  </Label>
+                  <Input
+                    id="audio_key_name"
+                    required
+                    value={audioKeyFormData.name}
+                    onChange={(e) => setAudioKeyFormData({ ...audioKeyFormData, name: e.target.value })}
+                    placeholder="Ex: AssemblyAI Principal"
+                    className="rounded-2xl h-14 text-lg border-border/60 bg-muted/10"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <Label htmlFor="audio_api_key_value" className="font-bold text-sm uppercase tracking-wider text-muted-foreground">
+                    Chave de API
+                  </Label>
+                  <Input
+                    id="audio_api_key_value"
+                    type="password"
+                    required
+                    value={audioKeyFormData.key}
+                    onChange={(e) => setAudioKeyFormData({ ...audioKeyFormData, key: e.target.value })}
+                    placeholder="94db1a5a..."
+                    className="rounded-2xl h-14 font-mono text-base border-border/60 bg-muted/10"
+                  />
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="bg-violet-500/5 rounded-[2rem] p-6 border border-violet-500/10 h-full">
+                  <h4 className="font-bold text-violet-600 flex items-center gap-2 mb-4">
+                    <Star className="h-4 w-4 fill-current" />
+                    Como obter?
+                  </h4>
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+                    Acesse o painel da AssemblyAI e copie sua chave de API na seção Account.
+                  </p>
+                  <a
+                    href="https://www.assemblyai.com/app/account"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between p-3 bg-background rounded-xl border border-border/40 hover:border-violet-500/40 transition-colors group"
+                  >
+                    <span className="text-xs font-semibold">Obter Chave</span>
+                    <Plus className="h-3 w-3 rotate-45 group-hover:rotate-0 transition-transform" />
+                  </a>
+                  <div className="mt-6 p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10">
+                    <p className="text-[10px] font-medium text-amber-600/80 leading-relaxed">
+                      Sua chave é criptografada e nunca será compartilhada com terceiros.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="p-8 md:p-10 pt-4 bg-muted/20 border-t border-border/40">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setIsAudioKeyDialogOpen(false)}
+                className="rounded-full h-12 px-6"
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="rounded-full px-10 h-12 shadow-elevation bg-violet-600 text-white hover:bg-violet-700 font-bold"
+              >
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Salvar Chave
               </Button>
             </DialogFooter>
           </form>
