@@ -31,7 +31,7 @@ export function VideoMessage({ msg, entry, request, fromMe }: VideoMessageProps)
   }
 
   return (
-    <div className="flex flex-col gap-1.5 max-w-[240px]">
+    <div className="flex flex-col gap-1.5 w-[240px] sm:w-[280px]">
       <div className="relative w-full rounded-xl overflow-hidden bg-muted aspect-[4/3]">
         {thumbnail && !blobUrl && (
           <img src={thumbnail} className="absolute inset-0 w-full h-full object-cover" />
