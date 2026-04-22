@@ -22,7 +22,12 @@ import { format, isToday, isYesterday } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { useAudioPreloader } from '@/hooks/use-audio-preloader'
+import { useMediaLoader } from '@/hooks/use-media-loader'
 import { AudioPlayer } from '@/components/chat/AudioPlayer'
+import { ImageMessage } from '@/components/chat/ImageMessage'
+import { VideoMessage } from '@/components/chat/VideoMessage'
+import { StickerMessage } from '@/components/chat/StickerMessage'
+import { MediaLightbox } from '@/components/chat/MediaLightbox'
 import { isUnsupportedMessageType, hasUnrenderableText } from '@/lib/message-types'
 import { UnsupportedMessage } from '@/components/chat/UnsupportedMessage'
 import { ReactionMessage } from '@/components/chat/ReactionMessage'
@@ -53,6 +58,8 @@ export default function Chat() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   const audioMap = useAudioPreloader(messages)
+  const { mediaMap, request } = useMediaLoader()
+  const [lightbox, setLightbox] = useState<{ blobUrl: string; caption: string | null } | null>(null)
 
   // Editing contact state
   const [isEditingContact, setIsEditingContact] = useState(false)
@@ -458,10 +465,13 @@ export default function Chat() {
                       )}
                       <div
                         className={cn(
-                          'relative px-4 sm:px-5 py-2.5 sm:py-3 rounded-[1.25rem] sm:rounded-[1.5rem] flex flex-col shadow-sm text-[14px] sm:text-[15px] leading-relaxed font-medium',
-                          isMe
-                            ? 'bg-primary text-primary-foreground rounded-br-sm'
-                            : 'bg-card border border-border/60 text-foreground rounded-bl-sm',
+                          'relative flex flex-col shadow-sm text-[14px] sm:text-[15px] leading-relaxed font-medium',
+                          msg.type !== 'stickerMessage' &&
+                            'px-4 sm:px-5 py-2.5 sm:py-3 rounded-[1.25rem] sm:rounded-[1.5rem]',
+                          msg.type !== 'stickerMessage' &&
+                            (isMe
+                              ? 'bg-primary text-primary-foreground rounded-br-sm'
+                              : 'bg-card border border-border/60 text-foreground rounded-bl-sm'),
                         )}
                       >
                         {msg.type === 'audioMessage' || msg.type === 'pttMessage' ? (
@@ -469,6 +479,27 @@ export default function Chat() {
                             blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
                             isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
                             fromMe={msg.from_me}
+                          />
+                        ) : msg.type === 'imageMessage' ? (
+                          <ImageMessage
+                            msg={msg}
+                            entry={mediaMap.get(msg.message_id)}
+                            request={request}
+                            fromMe={msg.from_me}
+                            onOpenLightbox={(blobUrl, caption) => setLightbox({ blobUrl, caption })}
+                          />
+                        ) : msg.type === 'videoMessage' ? (
+                          <VideoMessage
+                            msg={msg}
+                            entry={mediaMap.get(msg.message_id)}
+                            request={request}
+                            fromMe={msg.from_me}
+                          />
+                        ) : msg.type === 'stickerMessage' ? (
+                          <StickerMessage
+                            msg={msg}
+                            entry={mediaMap.get(msg.message_id)}
+                            request={request}
                           />
                         ) : msg.type === 'reactionMessage' ? (
                           <ReactionMessage raw={msg.raw} />
@@ -527,6 +558,14 @@ export default function Chat() {
           </form>
         </div>
       </div>
+
+      {lightbox && (
+        <MediaLightbox
+          blobUrl={lightbox.blobUrl}
+          caption={lightbox.caption}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   )
 }
