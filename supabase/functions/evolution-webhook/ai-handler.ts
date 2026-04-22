@@ -84,7 +84,7 @@ export async function processAiResponse(
 
     const { data: messages } = await supabase
       .from('whatsapp_messages')
-      .select('text, from_me')
+      .select('text, from_me, type, transcript')
       .eq('contact_id', contactId)
       .order('timestamp', { ascending: false })
       .limit(memoryLimit)
@@ -96,13 +96,18 @@ export async function processAiResponse(
       return
     }
 
-    const history = memoryLimit > 0 
+    const AUDIO_FALLBACK = '[Áudio recebido. Você ainda não consegue transcrever áudios - informe o cliente.]'
+
+    const history = memoryLimit > 0
       ? messages
           .reverse()
-          .map((m) => ({
-            role: m.from_me ? 'assistant' : 'user',
-            content: m.text || ''
-          }))
+          .map((m) => {
+            const isAudio = m.type === 'audioMessage' || m.type === 'pttMessage'
+            const content = isAudio
+              ? (m.transcript || AUDIO_FALLBACK)
+              : (m.text || '')
+            return { role: m.from_me ? 'assistant' : 'user', content }
+          })
       : []
 
     console.log(`[AI Handler] Calling OpenRouter with model: ${modelId}`)
