@@ -38,17 +38,20 @@ export async function processAiResponse(
 
     const { data: agent, error: agentError } = await supabase
       .from('ai_agents')
-      .select('*, user_api_keys(*)')
+      .select('*, user_api_keys!ai_agents_api_key_id_fkey(*)')
       .eq('id', contact.ai_agent_id)
       .eq('is_active', true)
       .single()
 
     if (agentError || !agent) {
-      console.log(
-        `[AI Handler] Exiting: Assigned agent ${contact.ai_agent_id} is either inactive, deleted, or error loading.`,
+      console.error(
+        `[AI Handler] Exiting: Assigned agent ${contact.ai_agent_id} is either inactive, deleted, or error loading. agentError:`,
+        agentError,
       )
       return
     }
+
+    console.log(`[AI Handler] Agent loaded: id=${agent.id} model=${agent.model_id} delay=${agent.message_delay} api_key_id=${agent.api_key_id} linked_key_present=${!!agent.user_api_keys?.key}`)
 
     const messageDelay = agent.message_delay ?? 0
 
@@ -58,26 +61,35 @@ export async function processAiResponse(
     }
 
     // Cancellation check 1: was a newer message received during the sleep?
-    const { data: contactVersion } = await supabase
+    const { data: contactVersion, error: versionCheckError } = await supabase
       .from('whatsapp_contacts')
       .select('ai_trigger_version')
       .eq('id', contactId)
       .single()
+
+    if (versionCheckError) {
+      console.error(`[AI Handler] Exiting: Failed to read ai_trigger_version for contact ${contactId}:`, versionCheckError)
+      return
+    }
 
     if (contactVersion?.ai_trigger_version !== triggerVersion) {
       console.log(`[AI Handler] Debounce: newer message arrived during delay, aborting (contact ${contactId}, expected v${triggerVersion}, got v${contactVersion?.ai_trigger_version})`)
       return
     }
 
+    console.log(`[AI Handler] Version check passed (v${triggerVersion}), proceeding with AI call`)
+
     // Get API Key: Try the linked key first, then fallback to the old gemini_api_key column, then env
     let apiKey = agent.user_api_keys?.key || agent.gemini_api_key || Deno.env.get('GEMINI_API_KEY')
-    
+
     if (!apiKey) {
       console.error(
-        `[AI Handler] Exiting: API Key missing from agent, linked keys, and environment secrets.`,
+        `[AI Handler] Exiting: API Key missing. api_key_id=${agent.api_key_id} user_api_keys=${JSON.stringify(agent.user_api_keys)}`,
       )
       return
     }
+
+    console.log(`[AI Handler] API key resolved (length=${apiKey.length}, prefix=${apiKey.slice(0, 8)}...)`)
 
     const modelId = agent.model_id || 'google/gemini-2.0-flash-lite:free'
     const memoryLimit = agent.memory_limit ?? 20
@@ -110,7 +122,7 @@ export async function processAiResponse(
           })
       : []
 
-    console.log(`[AI Handler] Calling OpenRouter with model: ${modelId}`)
+    console.log(`[AI Handler] Calling OpenRouter: model=${modelId} history_len=${history.length}`)
 
     const openai = new OpenAI({
       apiKey: apiKey,
@@ -121,21 +133,28 @@ export async function processAiResponse(
       }
     })
 
-    const completion = await openai.chat.completions.create({
-      model: modelId,
-      messages: [
-        { role: 'system', content: agent.system_prompt },
-        ...history
-      ],
-      temperature: 0.7,
-      max_tokens: 800,
-    })
+    let completion
+    try {
+      completion = await openai.chat.completions.create({
+        model: modelId,
+        messages: [
+          { role: 'system', content: agent.system_prompt },
+          ...history
+        ],
+        temperature: 0.7,
+        max_tokens: 800,
+      })
+      console.log(`[AI Handler] OpenRouter responded: finish_reason=${completion.choices[0]?.finish_reason} usage=${JSON.stringify(completion.usage)}`)
+    } catch (openrouterErr: any) {
+      console.error(`[AI Handler] Exiting: OpenRouter threw an error: ${openrouterErr?.message} status=${openrouterErr?.status} code=${openrouterErr?.code}`)
+      return
+    }
 
     const responseText = completion.choices[0]?.message?.content?.trim()
 
     if (!responseText) {
       console.error(
-        `[AI Handler] Exiting: Empty response from AI API for contact ${contactId}.`,
+        `[AI Handler] Exiting: Empty response from OpenRouter. choices=${JSON.stringify(completion.choices)}`,
       )
       return
     }
@@ -164,7 +183,7 @@ export async function processAiResponse(
     const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
 
     console.log(
-      `[AI Handler] Attempting to send message to Evolution API. Phone: ${contact.remote_jid}`,
+      `[AI Handler] Evolution API: url=${evoUrl ? evoUrl.slice(0, 40) + '...' : 'EMPTY'} key_present=${!!evoKey} instance=${integration.instance_name}`,
     )
 
     // Cancellation check 2: was a newer message received during the OpenRouter call?
@@ -178,6 +197,8 @@ export async function processAiResponse(
       console.log(`[AI Handler] Debounce: newer message arrived during LLM call, discarding response (contact ${contactId}, expected v${triggerVersion}, got v${contactVersionBeforeSend?.ai_trigger_version})`)
       return
     }
+
+    console.log(`[AI Handler] Sending to ${evoUrl}/message/sendText/${integration.instance_name} → number=${contact.remote_jid}`)
 
     const sendRes = await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
       method: 'POST',
@@ -194,11 +215,12 @@ export async function processAiResponse(
     if (!sendRes.ok) {
       const errText = await sendRes.text()
       console.error(
-        `[AI Handler] Exiting: Failed to send message via Evolution API. HTTP Response: ${sendRes.status} Error:`,
-        errText,
+        `[AI Handler] Exiting: sendText failed. status=${sendRes.status} url=${evoUrl}/message/sendText/${integration.instance_name} body=${errText}`,
       )
       return
     }
+
+    console.log(`[AI Handler] sendText OK (status=${sendRes.status})`)
 
     const result = await sendRes.json()
     const messageId = result?.key?.id || result?.id || crypto.randomUUID()
