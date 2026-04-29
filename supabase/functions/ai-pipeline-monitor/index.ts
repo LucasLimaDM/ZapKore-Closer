@@ -1,5 +1,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import OpenAI from 'npm:openai'
 import { corsHeaders } from '../_shared/cors.ts'
 
 Deno.serve(async (req: Request) => {
@@ -8,9 +9,7 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
-
-    if (!geminiApiKey) throw new Error('GEMINI_API_KEY is missing')
+    const systemApiKey = Deno.env.get('OPENROUTER_API_KEY') || Deno.env.get('GEMINI_API_KEY')
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
@@ -35,6 +34,22 @@ Deno.serve(async (req: Request) => {
 
     for (const contact of contacts) {
       try {
+        // Fetch the user's default agent for each contact to get their specific connection
+        const { data: agent } = await supabase
+          .from('ai_agents')
+          .select('*, user_api_keys(*)')
+          .eq('user_id', contact.user_id)
+          .eq('is_default', true)
+          .maybeSingle()
+
+        const apiKey = agent?.user_api_keys?.key || systemApiKey
+        const modelId = agent?.model_id || 'google/gemini-2.0-flash-lite:free'
+
+        if (!apiKey) {
+          console.warn(`[AI Pipeline Monitor] No API key found for user ${contact.user_id}. Skipping.`)
+          continue
+        }
+
         const { data: messages } = await supabase
           .from('whatsapp_messages')
           .select('text, from_me')
@@ -48,44 +63,38 @@ Deno.serve(async (req: Request) => {
         if (messages && messages.length > 0) {
           const history = messages
             .reverse()
-            .map((m: any) => `${m.from_me ? 'Me' : 'Contact'}: ${m.text}`)
-            .join('\n')
+            .map((m: any) => ({
+              role: m.from_me ? 'assistant' : 'user',
+              content: m.text || ''
+            }))
 
-          const prompt = `
-You are an AI assistant managing a CRM pipeline for WhatsApp conversations.
-The following conversation has been inactive for a while.
-Analyze the history and decide if the conversation was RESOLVED (the user's questions were answered, a deal was closed, a meeting was booked, or the chat reached a natural conclusion) or LOST/ABANDONED (the contact stopped responding without a conclusion, showed no interest, or declined).
-
-Return ONLY a valid JSON object:
-{
-  "stage": "Resolvido" | "Perdido",
-  "reasoning": "brief explanation"
-}
-
-CONVERSATION:
-${history}
-          `
-
-          const aiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`
-          const aiRes = await fetch(aiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
-            }),
+          const openai = new OpenAI({
+            apiKey: apiKey,
+            baseURL: "https://openrouter.ai/api/v1",
+            defaultHeaders: {
+              "HTTP-Referer": "https://zapkore-closer.com",
+              "X-Title": "ZapKore Closer - Pipeline Monitor",
+            }
           })
 
-          if (aiRes.ok) {
-            const aiData = await aiRes.json()
-            const textResponse = aiData.candidates?.[0]?.content?.parts?.[0]?.text
-            if (textResponse) {
-              const result = JSON.parse(textResponse)
-              stage = result.stage === 'Resolvido' ? 'Resolvido' : 'Perdido'
-              reasoning = result.reasoning || ''
-            }
-          } else {
-            console.error(`Gemini Error for contact ${contact.id}:`, await aiRes.text())
+          const completion = await openai.chat.completions.create({
+            model: modelId,
+            messages: [
+              {
+                role: 'system',
+                content: `You are an AI assistant managing a CRM pipeline for WhatsApp conversations. Analyze the history and decide if the conversation was RESOLVED or LOST/ABANDONED. Return JSON with 'stage' ("Resolvido" | "Perdido") and 'reasoning' (brief string).`
+              },
+              ...history as any
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.2,
+          })
+
+          const textResponse = completion.choices[0]?.message?.content
+          if (textResponse) {
+            const result = JSON.parse(textResponse)
+            stage = result.stage === 'Resolvido' ? 'Resolvido' : 'Perdido'
+            reasoning = result.reasoning || ''
           }
         }
 
@@ -117,3 +126,4 @@ ${history}
     })
   }
 })
+

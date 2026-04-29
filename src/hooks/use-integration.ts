@@ -29,6 +29,8 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
       return
     }
 
+    setLoading(true)
+
     const fetchIntegration = async () => {
       const { data, error } = await supabase
         .from('user_integrations')

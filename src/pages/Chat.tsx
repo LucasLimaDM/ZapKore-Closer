@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback, useLayoutEffect } from 'react'
 import { getContactDisplayName, getContactDisplaySubtitle } from '@/lib/format'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase/client'
@@ -16,11 +16,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Send, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowLeft, Send, Sparkles, Loader2, Edit2, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { format, isToday, isYesterday } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { useAudioPreloader } from '@/hooks/use-audio-preloader'
+import { useMediaLoader } from '@/hooks/use-media-loader'
+import { AudioPlayer } from '@/components/chat/AudioPlayer'
+import { ImageMessage } from '@/components/chat/ImageMessage'
+import { VideoMessage } from '@/components/chat/VideoMessage'
+import { StickerMessage } from '@/components/chat/StickerMessage'
+import { MediaLightbox } from '@/components/chat/MediaLightbox'
+import { isUnsupportedMessageType, hasUnrenderableText, SILENT_MESSAGE_TYPES } from '@/lib/message-types'
+import { UnsupportedMessage } from '@/components/chat/UnsupportedMessage'
+import { ReactionMessage } from '@/components/chat/ReactionMessage'
+import { ProtocolMessage } from '@/components/chat/ProtocolMessage'
 
 export default function Chat() {
   const { id } = useParams()
@@ -36,6 +47,25 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('')
   const [isSending, setIsSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const topSentinelRef = useRef<HTMLDivElement>(null)
+  const prevScrollHeightRef = useRef<number>(0)
+  const loadMoreFnRef = useRef<() => void>(() => {})
+  const isLoadingMoreRef = useRef(false)
+  const isNearBottomRef = useRef(true)
+
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+
+  const audioMap = useAudioPreloader(messages)
+  const { mediaMap, request } = useMediaLoader()
+  const [lightbox, setLightbox] = useState<{ blobUrl: string; caption: string | null } | null>(null)
+
+  // Editing contact state
+  const [isEditingContact, setIsEditingContact] = useState(false)
+  const [editedName, setEditedName] = useState('')
+  const [editedPhone, setEditedPhone] = useState('')
+  const [isUpdatingContact, setIsUpdatingContact] = useState(false)
 
   useEffect(() => {
     if (!user || !id) return
@@ -53,9 +83,15 @@ export default function Chat() {
         .from('whatsapp_messages')
         .select('*')
         .eq('contact_id', id)
-        .order('timestamp', { ascending: true })
+        .order('timestamp', { ascending: false })
+        .limit(200)
 
-      if (messagesData) setMessages(messagesData)
+      if (messagesData) {
+        setMessages([...messagesData].reverse())
+        setHasMore(messagesData.length === 200)
+      } else {
+        setHasMore(false)
+      }
       setLoading(false)
       scrollToBottom()
     }
@@ -67,13 +103,16 @@ export default function Chat() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'whatsapp_messages',
           filter: `contact_id=eq.${id}`,
         },
         (payload) => {
           setMessages((prev) => {
+            if (payload.eventType === 'UPDATE') {
+              return prev.map((m) => (m.id === payload.new.id ? (payload.new as WhatsAppMessage) : m))
+            }
             if (prev.find((m) => m.id === payload.new.id)) return prev
             return [...prev, payload.new as WhatsAppMessage]
           })
@@ -82,15 +121,115 @@ export default function Chat() {
       )
       .subscribe()
 
+    const container = messagesContainerRef.current
+    const handleScroll = () => {
+      if (!container) return
+      const threshold = 150
+      isNearBottomRef.current =
+        container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+    }
+    if (container) container.addEventListener('scroll', handleScroll)
+
     return () => {
       supabase.removeChannel(channel)
+      if (container) container.removeEventListener('scroll', handleScroll)
     }
   }, [user, id])
 
   const scrollToBottom = () => {
+    if (!isNearBottomRef.current) return
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, 100)
+  }
+
+  const loadMoreMessages = useCallback(async () => {
+    if (isLoadingMoreRef.current || !hasMore || !messages.length || !id) return
+    isLoadingMoreRef.current = true
+    setIsLoadingMore(true)
+    prevScrollHeightRef.current = messagesContainerRef.current?.scrollHeight ?? 0
+
+    try {
+      const oldest = messages[0].timestamp
+
+      const { data } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('contact_id', id)
+        .lt('timestamp', oldest)
+        .order('timestamp', { ascending: false })
+        .limit(50)
+
+      if (data) {
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id))
+          const newMsgs = [...data].reverse().filter((m) => !existingIds.has(m.id))
+          return [...newMsgs, ...prev]
+        })
+        setHasMore(data.length === 50)
+      }
+    } finally {
+      isLoadingMoreRef.current = false
+      setIsLoadingMore(false)
+    }
+  }, [hasMore, messages, id])
+
+  useEffect(() => {
+    loadMoreFnRef.current = loadMoreMessages
+  }, [loadMoreMessages])
+
+  useLayoutEffect(() => {
+    if (prevScrollHeightRef.current > 0 && messagesContainerRef.current) {
+      const newScrollHeight = messagesContainerRef.current.scrollHeight
+      messagesContainerRef.current.scrollTop +=
+        newScrollHeight - prevScrollHeightRef.current
+      prevScrollHeightRef.current = 0
+    }
+  }, [messages.length])
+
+  useEffect(() => {
+    if (loading) return
+    const sentinel = topSentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMoreFnRef.current()
+        }
+      },
+      { rootMargin: '120px', threshold: 0 },
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loading])
+
+  const startEditing = () => {
+    setIsEditingContact(true)
+    setEditedName(contact?.custom_name || contact?.push_name || '')
+    setEditedPhone(contact?.custom_phone || contact?.phone_number || contact?.remote_jid?.split('@')[0] || '')
+  }
+
+  const saveContactEdits = async () => {
+    if (!contact) return
+    setIsUpdatingContact(true)
+    const { error } = await supabase
+      .from('whatsapp_contacts')
+      .update({
+        custom_name: editedName.trim() || null,
+        custom_phone: editedPhone.replace(/\D/g, '') || null,
+      })
+      .eq('id', contact.id)
+
+    if (error) {
+      toast.error(t('error_save' as TranslationKey) || 'Failed to save changes')
+    } else {
+      setContact((prev) => (prev ? { ...prev, custom_name: editedName, custom_phone: editedPhone } : null))
+      toast.success(t('contact_updated' as TranslationKey) || 'Contact updated')
+      setIsEditingContact(false)
+    }
+    setIsUpdatingContact(false)
   }
 
   const handleAgentChange = async (value: string) => {
@@ -171,7 +310,7 @@ export default function Chat() {
   }
 
   const groupedMessages: { [key: string]: WhatsAppMessage[] } = {}
-  messages.forEach((msg) => {
+  messages.filter((msg) => !SILENT_MESSAGE_TYPES.has(msg.type ?? '')).forEach((msg) => {
     const dateStr = formatMessageDate(msg.timestamp || msg.created_at || new Date().toISOString())
     if (!groupedMessages[dateStr]) groupedMessages[dateStr] = []
     groupedMessages[dateStr].push(msg)
@@ -197,13 +336,47 @@ export default function Chat() {
                 {getContactDisplayName(contact, '').charAt(0) || '#'}
               </AvatarFallback>
             </Avatar>
-            <div className="flex flex-col max-w-[140px] sm:max-w-[260px]">
-              <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
-                {getContactDisplayName(contact, t('unknown'))}
-              </span>
-              <span className="text-[12px] sm:text-[13px] font-semibold text-muted-foreground truncate">
-                {getContactDisplaySubtitle(contact, t('unknownNumber'))}
-              </span>
+            <div className="flex flex-col max-w-[180px] sm:max-w-[260px] gap-0.5">
+              {isEditingContact ? (
+                <div className="flex flex-col gap-2">
+                  <Input
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    className="h-7 text-sm px-2 rounded-md"
+                    placeholder={t('agent_name_placeholder') || 'Name'}
+                  />
+                  <Input
+                    value={editedPhone}
+                    onChange={(e) => setEditedPhone(e.target.value)}
+                    className="h-7 text-sm px-2 rounded-md"
+                    placeholder="Phone"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[15px] sm:text-[17px] tracking-tight truncate text-foreground leading-tight">
+                    {getContactDisplayName(contact, t('unknown'))}
+                  </span>
+                  <button onClick={startEditing} className="hover:text-primary transition-colors">
+                    <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                </div>
+              )}
+              {!isEditingContact && (
+                <span className="text-[12px] sm:text-[13px] font-semibold text-muted-foreground truncate">
+                  {getContactDisplaySubtitle(contact, t('unknownNumber'))}
+                </span>
+              )}
+              {isEditingContact && (
+                <div className="flex gap-1 mt-1">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 rounded-full" onClick={() => setIsEditingContact(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 rounded-full text-primary" onClick={saveContactEdits} disabled={isUpdatingContact}>
+                    {isUpdatingContact ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -237,7 +410,26 @@ export default function Chat() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-zinc-50/30 dark:bg-background/30 scrollbar-thin">
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-zinc-50/30 dark:bg-background/30 scrollbar-thin"
+        >
+          <div ref={topSentinelRef} className="h-px w-full" />
+
+          {isLoadingMore && (
+            <div className="flex justify-center py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/50" />
+            </div>
+          )}
+
+          {!hasMore && messages.length > 0 && (
+            <div className="flex justify-center py-2">
+              <span className="text-[11px] font-bold text-muted-foreground/40 tracking-tight">
+                {language === 'pt' ? 'Início da conversa' : 'Start of conversation'}
+              </span>
+            </div>
+          )}
+
           {Object.entries(groupedMessages).map(([date, msgs]) => (
             <div key={date} className="space-y-6">
               <div className="flex justify-center my-4">
@@ -273,13 +465,54 @@ export default function Chat() {
                       )}
                       <div
                         className={cn(
-                          'relative px-4 sm:px-5 py-2.5 sm:py-3 rounded-[1.25rem] sm:rounded-[1.5rem] flex flex-col shadow-sm text-[14px] sm:text-[15px] leading-relaxed font-medium',
-                          isMe
-                            ? 'bg-primary text-primary-foreground rounded-br-sm'
-                            : 'bg-card border border-border/60 text-foreground rounded-bl-sm',
+                          'relative flex flex-col shadow-sm text-[14px] sm:text-[15px] leading-relaxed font-medium',
+                          msg.type !== 'stickerMessage' &&
+                            'px-4 sm:px-5 py-2.5 sm:py-3 rounded-[1.25rem] sm:rounded-[1.5rem]',
+                          msg.type !== 'stickerMessage' &&
+                            (isMe
+                              ? 'bg-primary text-primary-foreground rounded-br-sm'
+                              : 'bg-card border border-border/60 text-foreground rounded-bl-sm'),
                         )}
                       >
-                        <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+                        {msg.type === 'audioMessage' || msg.type === 'pttMessage' ? (
+                          <AudioPlayer
+                            blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
+                            isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
+                            fromMe={msg.from_me}
+                            transcript={msg.transcript}
+                          />
+                        ) : msg.type === 'imageMessage' ? (
+                          <ImageMessage
+                            msg={msg}
+                            entry={mediaMap.get(msg.message_id)}
+                            request={request}
+                            fromMe={msg.from_me}
+                            onOpenLightbox={(blobUrl, caption) => setLightbox({ blobUrl, caption })}
+                          />
+                        ) : msg.type === 'videoMessage' ? (
+                          <VideoMessage
+                            msg={msg}
+                            entry={mediaMap.get(msg.message_id)}
+                            request={request}
+                            fromMe={msg.from_me}
+                          />
+                        ) : msg.type === 'stickerMessage' ? (
+                          <StickerMessage
+                            msg={msg}
+                            entry={mediaMap.get(msg.message_id)}
+                            request={request}
+                          />
+                        ) : msg.type === 'reactionMessage' ? (
+                          <ReactionMessage raw={msg.raw} />
+                        ) : msg.type === 'protocolMessage' ? (
+                          <ProtocolMessage raw={msg.raw} />
+                        ) : isUnsupportedMessageType(msg.type) ? (
+                          <UnsupportedMessage type={msg.type!} />
+                        ) : hasUnrenderableText(msg.text) ? (
+                          <UnsupportedMessage type="unknown" />
+                        ) : (
+                          <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+                        )}
                         <span
                           className={cn(
                             'text-[10px] sm:text-[11px] mt-1.5 self-end font-bold opacity-70 tracking-tight',
@@ -326,6 +559,14 @@ export default function Chat() {
           </form>
         </div>
       </div>
+
+      {lightbox && (
+        <MediaLightbox
+          blobUrl={lightbox.blobUrl}
+          caption={lightbox.caption}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   )
 }

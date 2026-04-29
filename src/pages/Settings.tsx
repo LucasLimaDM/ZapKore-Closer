@@ -12,8 +12,10 @@ import {
   CardFooter,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { Loader2, MessageCircle, Plug, Unplug, CheckCircle2 } from 'lucide-react'
+import { Loader2, MessageCircle, Plug, Unplug, CheckCircle2, KeyRound } from 'lucide-react'
 
 export default function Settings() {
   const { integration, setIntegration, loading: integrationLoading } = useIntegration()
@@ -22,11 +24,64 @@ export default function Settings() {
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
 
+  const [credUrl, setCredUrl] = useState<string | null>(null)
+  const [credMasked, setCredMasked] = useState<string | null>(null)
+  const [credLoading, setCredLoading] = useState(true)
+  const [editingCreds, setEditingCreds] = useState(false)
+  const [editUrl, setEditUrl] = useState('')
+  const [editKey, setEditKey] = useState('')
+  const [savingCreds, setSavingCreds] = useState(false)
+
   useEffect(() => {
-    if (integration?.status === 'CONNECTED') {
-      setQrCode(null)
-    }
+    if (integration?.status === 'CONNECTED') setQrCode(null)
   }, [integration?.status])
+
+  useEffect(() => {
+    const loadCredentials = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('evolution-credentials', {
+          body: { action: 'get' },
+        })
+        if (!error && data) {
+          setCredUrl(data.url)
+          setCredMasked(data.api_key_masked)
+        }
+      } finally {
+        setCredLoading(false)
+      }
+    }
+    loadCredentials()
+  }, [])
+
+  const handleSaveCreds = async () => {
+    if (!editUrl.trim() || !editKey.trim()) {
+      toast.error('URL e API Key são obrigatórios')
+      return
+    }
+    setSavingCreds(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('evolution-credentials', {
+        body: { action: 'save', url: editUrl.trim(), api_key: editKey.trim() },
+      })
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao salvar')
+      setCredUrl(data.url)
+      setCredMasked(data.api_key_masked)
+      setEditingCreds(false)
+      setEditUrl('')
+      setEditKey('')
+      toast.success('Credenciais atualizadas com sucesso')
+    } catch (e: any) {
+      toast.error(e.message || 'Credenciais inválidas. Verifique a URL e a API Key.')
+    } finally {
+      setSavingCreds(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingCreds(false)
+    setEditUrl('')
+    setEditKey('')
+  }
 
   const handleConnect = async () => {
     if (!integration) return
@@ -110,6 +165,108 @@ export default function Settings() {
       </div>
 
       <div className="space-y-6">
+        {/* Evolution API Credentials Card */}
+        <Card className="shadow-subtle border border-border/40 rounded-[2rem] bg-card overflow-hidden">
+          <CardHeader className="pb-4 pt-8 px-8">
+            <CardTitle className="flex items-center gap-3 text-xl tracking-tight">
+              <div className="bg-primary/10 text-primary p-2.5 rounded-2xl">
+                <KeyRound className="h-5 w-5" />
+              </div>
+              Evolution API
+            </CardTitle>
+            <CardDescription className="font-medium text-sm text-muted-foreground max-w-sm">
+              URL e credenciais da sua instância Evolution API
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="px-8 pb-8 space-y-4">
+            {credLoading ? (
+              <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
+            ) : editingCreds ? (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="settings-evo-url">URL da Evolution API</Label>
+                  <Input
+                    id="settings-evo-url"
+                    type="url"
+                    placeholder="https://api.seudominio.com"
+                    value={editUrl}
+                    onChange={(e) => setEditUrl(e.target.value)}
+                    disabled={savingCreds}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="settings-evo-key">API Key</Label>
+                  <Input
+                    id="settings-evo-key"
+                    type="password"
+                    placeholder="Nova API Key"
+                    value={editKey}
+                    onChange={(e) => setEditKey(e.target.value)}
+                    disabled={savingCreds}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleSaveCreds}
+                    disabled={savingCreds}
+                    className="rounded-full px-6 h-10 font-semibold"
+                  >
+                    {savingCreds ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                      </>
+                    ) : (
+                      'Salvar'
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleCancelEdit}
+                    disabled={savingCreds}
+                    className="rounded-full px-6 h-10 font-semibold"
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 flex flex-col gap-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      URL
+                    </span>
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {credUrl || (
+                        <span className="text-muted-foreground italic">Não configurado</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      API Key
+                    </span>
+                    <span className="text-sm font-mono font-medium text-foreground">
+                      {credMasked || (
+                        <span className="text-muted-foreground italic">Não configurado</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => setEditingCreds(true)}
+                  className="rounded-full px-6 h-10 font-semibold"
+                >
+                  Editar
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* WhatsApp Connection Card */}
         <Card className="shadow-subtle border border-border/40 rounded-[2rem] bg-card overflow-hidden">
           <CardHeader className="pb-6 pt-8 px-8 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div className="space-y-2">

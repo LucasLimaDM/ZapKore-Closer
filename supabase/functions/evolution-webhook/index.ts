@@ -3,6 +3,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { extractCanonicalPhone, normalizeJid, resolveLidToPhone } from '../_shared/utils.ts'
 import { linkLidToPhone } from '../_shared/contact-linking.ts'
 import { processAiResponse } from './ai-handler.ts'
+import { processAudioMessage } from './audio-handler.ts'
 
 Deno.serve(async (req: Request) => {
   try {
@@ -51,6 +52,64 @@ Deno.serve(async (req: Request) => {
           .from('user_integrations')
           .update({ status: 'DISCONNECTED' })
           .eq('user_id', userId)
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Evolution forwards message deletions via messages.delete or messages.update
+    // (never as messages.upsert with a revoke protocolMessage). Both paths converge
+    // on "mark the original row as type='protocolMessage' so UI renders 'Mensagem apagada'".
+    const markRevoked = async (messageId: string) => {
+      const { error } = await supabase
+        .from('whatsapp_messages')
+        .update({ type: 'protocolMessage', text: null })
+        .eq('user_id', userId)
+        .eq('message_id', messageId)
+      if (error) {
+        console.error(`[WEBHOOK] Error marking ${messageId} as revoked:`, error)
+      } else {
+        console.log(`[WEBHOOK] Marked message ${messageId} as revoked`)
+      }
+    }
+
+    if (event === 'messages.delete') {
+      const data = payload.data
+      const entries: any[] = []
+      if (Array.isArray(data)) {
+        entries.push(...data)
+      } else if (data?.keys && Array.isArray(data.keys)) {
+        entries.push(...data.keys)
+      } else if (data) {
+        entries.push(data)
+      }
+      for (const e of entries) {
+        const mid = e?.id || e?.key?.id || e?.messageId
+        if (mid) await markRevoked(mid)
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (event === 'messages.update') {
+      const data = payload.data
+      const entries: any[] = Array.isArray(data) ? data : data ? [data] : []
+      for (const e of entries) {
+        const update = e?.update || e?.message?.update || e
+        const protoType = update?.message?.protocolMessage?.type
+        const stub = update?.messageStubType
+        const isRevoke =
+          protoType === 0 ||
+          stub === 'REVOKE' ||
+          stub === 1 ||
+          stub === 68 // Baileys REVOKE stub types
+        if (!isRevoke) continue
+        const mid = e?.key?.id || e?.keyId || e?.messageId || update?.key?.id
+        if (mid) await markRevoked(mid)
       }
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
@@ -115,7 +174,7 @@ Deno.serve(async (req: Request) => {
       }
 
       let type = 'text'
-      let text = '[Media/Unsupported]'
+      let text: string | null = null
 
       const content = msgObj.message
       if (typeof content === 'string') {
@@ -127,8 +186,10 @@ Deno.serve(async (req: Request) => {
           content.imageMessage?.caption ||
           content.videoMessage?.caption ||
           content.documentMessage?.caption ||
+          content.templateMessage?.hydratedTemplate?.hydratedContentText ||
+          content.templateMessage?.hydratedTemplate?.hydratedTitleText ||
           msgObj.text ||
-          '[Media/Unsupported]'
+          null
 
         type = Object.keys(content).filter((k: string) => k !== 'messageContextInfo')[0] || 'text'
       } else if (msgObj.text) {
@@ -274,6 +335,33 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // Revoke (message deleted on WhatsApp): mutate the original message row
+      // to type='protocolMessage' so the UI renders "Mensagem apagada".
+      if (
+        contact &&
+        type === 'protocolMessage' &&
+        content?.protocolMessage?.type === 0 &&
+        content?.protocolMessage?.key?.id
+      ) {
+        const revokedId = content.protocolMessage.key.id
+        const { error: revokeErr } = await supabase
+          .from('whatsapp_messages')
+          .update({ type: 'protocolMessage', text: null, raw: msgObj })
+          .eq('user_id', userId)
+          .eq('message_id', revokedId)
+
+        if (revokeErr) {
+          console.error(`[WEBHOOK] Error marking ${revokedId} as revoked:`, revokeErr)
+        } else {
+          console.log(`[WEBHOOK] Marked message ${revokedId} as revoked`)
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
       if (contact && messageId) {
         const { error: insertError } = await supabase.from('whatsapp_messages').upsert(
           {
@@ -326,25 +414,66 @@ Deno.serve(async (req: Request) => {
             console.log(
               `[WEBHOOK] Skip AI processing: Message is from me (remoteJid: ${effectiveJid}, instance: ${instanceName})`,
             )
+          } else if (type === 'audioMessage' || type === 'pttMessage') {
+            const { data: newVersion, error: versionError } = await supabase
+              .rpc('increment_ai_trigger_version', { p_contact_id: contact.id })
+
+            if (versionError || newVersion === null || newVersion === undefined) {
+              console.error(`[WEBHOOK] Failed to increment ai_trigger_version for contact ${contact.id}:`, versionError)
+            } else {
+              const myVersion = newVersion as number
+              console.log(
+                `[WEBHOOK] Triggering background audio+AI task for contact ${contact.id} (type: ${type}, triggerVersion: ${myVersion})`,
+              )
+              const audioTask = processAudioMessage(
+                userId,
+                contact.id,
+                messageId,
+                supabaseUrl,
+                supabaseKey,
+                myVersion,
+                evoUrl,
+                evoKey || '',
+                instanceName,
+              )
+              if (
+                typeof (globalThis as any).EdgeRuntime !== 'undefined' &&
+                typeof (globalThis as any).EdgeRuntime.waitUntil === 'function'
+              ) {
+                ;(globalThis as any).EdgeRuntime.waitUntil(audioTask)
+              } else {
+                audioTask.catch((err: any) =>
+                  console.error('[WEBHOOK] Background audio task failed:', err),
+                )
+              }
+            }
           } else if (!['text', 'conversation', 'extendedTextMessage'].includes(type)) {
             console.log(
               `[WEBHOOK] Skip AI processing: Message type is not text/conversation (type: ${type}, remoteJid: ${effectiveJid}, instance: ${instanceName})`,
             )
           } else {
-            console.log(
-              `[WEBHOOK] Triggering background AI task for contact ${contact.id} (remoteJid: ${effectiveJid})`,
-            )
-            if (
-              typeof (globalThis as any).EdgeRuntime !== 'undefined' &&
-              typeof (globalThis as any).EdgeRuntime.waitUntil === 'function'
-            ) {
-              ;(globalThis as any).EdgeRuntime.waitUntil(
-                processAiResponse(userId, contact.id, supabaseUrl, supabaseKey),
-              )
+            const { data: newVersion, error: versionError } = await supabase
+              .rpc('increment_ai_trigger_version', { p_contact_id: contact.id })
+
+            if (versionError || newVersion === null || newVersion === undefined) {
+              console.error(`[WEBHOOK] Failed to increment ai_trigger_version for contact ${contact.id}:`, versionError)
             } else {
-              processAiResponse(userId, contact.id, supabaseUrl, supabaseKey).catch((err: any) =>
-                console.error('[WEBHOOK] Background AI task failed:', err),
+              const myVersion = newVersion as number
+              console.log(
+                `[WEBHOOK] Triggering background AI task for contact ${contact.id} (remoteJid: ${effectiveJid}, triggerVersion: ${myVersion})`,
               )
+              if (
+                typeof (globalThis as any).EdgeRuntime !== 'undefined' &&
+                typeof (globalThis as any).EdgeRuntime.waitUntil === 'function'
+              ) {
+                ;(globalThis as any).EdgeRuntime.waitUntil(
+                  processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion),
+                )
+              } else {
+                processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion).catch((err: any) =>
+                  console.error('[WEBHOOK] Background AI task failed:', err),
+                )
+              }
             }
           }
         }

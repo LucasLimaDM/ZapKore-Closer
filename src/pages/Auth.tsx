@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 import { useNavigate, Navigate } from 'react-router-dom'
 import closerLogo from '@/assets/closer_logo-fcd09.png'
@@ -23,6 +23,7 @@ export default function Auth() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [pendingConfirmation, setPendingConfirmation] = useState(false)
   const { signIn, signUp, user, loading: authLoading } = useAuth()
   const { t } = useLanguage()
   const navigate = useNavigate()
@@ -35,16 +36,70 @@ export default function Auth() {
     e.preventDefault()
     setLoading(true)
 
-    const action = isSignUp ? signUp : signIn
-    const { error } = await action(email, password)
-
-    setLoading(false)
-    if (error) {
-      toast.error(error.message)
+    if (isSignUp) {
+      const { error, needsConfirmation } = await signUp(email, password)
+      setLoading(false)
+      if (error) {
+        toast.error(error.message)
+      } else if (needsConfirmation) {
+        setPendingConfirmation(true)
+      } else {
+        // email confirmation disabled — user is already logged in
+        navigate('/app')
+      }
     } else {
-      toast.success(isSignUp ? t('account_created') : t('welcome_back'))
-      navigate('/app')
+      const { error } = await signIn(email, password)
+      setLoading(false)
+      if (error) {
+        toast.error(error.message)
+      } else {
+        navigate('/app')
+      }
     }
+  }
+
+  if (pendingConfirmation) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 pt-20 font-sans relative">
+        <div className="absolute top-6 right-6">
+          <LanguageSwitcher />
+        </div>
+        <Card className="w-full max-w-md shadow-elevation border border-border/40 rounded-[2rem] bg-white animate-in fade-in slide-in-from-bottom-8 duration-500 ease-apple">
+          <CardHeader className="space-y-4 text-center pb-6 pt-10 px-8">
+            <div className="mx-auto mb-4 flex justify-center">
+              <img src={closerLogo} alt="Closer" className="h-10 w-auto object-contain" />
+            </div>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <Mail className="h-7 w-7 text-primary" />
+            </div>
+            <CardTitle className="text-2xl font-semibold tracking-tight">
+              {t('check_email_title')}
+            </CardTitle>
+            <CardDescription className="text-base font-medium">
+              {t('check_email_desc')}{' '}
+              <span className="font-semibold text-foreground">{email}</span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-10 pb-4 text-center space-y-3">
+            <p className="text-sm text-muted-foreground">{t('check_email_instruction')}</p>
+            <p className="text-xs text-muted-foreground">{t('check_email_spam')}</p>
+          </CardContent>
+          <CardFooter className="px-10 pb-10 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPendingConfirmation(false)
+                setIsSignUp(false)
+                setPassword('')
+              }}
+              className="w-full text-sm text-center text-primary hover:text-primary/80 font-semibold transition-colors"
+            >
+              {t('back_to_login')}
+            </button>
+          </CardFooter>
+        </Card>
+      </div>
+    )
   }
 
   return (
