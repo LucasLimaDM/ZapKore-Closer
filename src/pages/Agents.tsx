@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { useAgents } from '@/hooks/use-agents'
 import { useAPIKeys } from '@/hooks/use-api-keys'
 import { useLanguage } from '@/hooks/use-language'
+import { supabase } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -42,25 +44,26 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash2, Edit2, Loader2, Star, Check, Key, Globe, ShieldCheck, ChevronsUpDown, Mic } from 'lucide-react'
+import { Plus, Trash2, Edit2, Loader2, Star, Check, Key, Globe, ShieldCheck, ChevronsUpDown, Mic, RefreshCw } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { AIAgent, UserAPIKey } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const AI_MODELS = [
-  { id: 'google/gemini-2.0-flash-lite:free', name: 'Gemini 2.0 Flash Lite (Free)' },
-  { id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-  { id: 'google/gemini-pro-1.5', name: 'Gemini 1.5 Pro' },
+  { id: 'z-ai/glm-4.5-air:free', name: 'GLM 4.5 Air (Free)' },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)' },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+  { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
   { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini' },
   { id: 'openai/gpt-4o', name: 'GPT-4o' },
   { id: 'openai/o3-mini', name: 'OpenAI o3-mini' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
-  { id: 'anthropic/claude-3-5-haiku', name: 'Claude 3.5 Haiku' },
+  { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6' },
+  { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5' },
   { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3' },
-  { id: 'deepseek/deepseek-reasoner', name: 'DeepSeek R1' },
+  { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1' },
   { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
-  { id: 'x-ai/grok-2-1212', name: 'Grok 2' },
-  { id: 'mistralai/mistral-large-latest', name: 'Mistral Large' },
+  { id: 'x-ai/grok-3', name: 'Grok 3' },
+  { id: 'mistralai/mistral-large-2512', name: 'Mistral Large' },
 ]
 
 const AI_PROVIDERS = [
@@ -96,10 +99,11 @@ export default function Agents() {
     description: '',
     system_prompt: '',
     api_key_id: '',
-    audio_api_key_id: '',
-    model_id: 'google/gemini-2.0-flash-lite:free',
+    audio_api_key_id: '__none__',
+    model_id: 'z-ai/glm-4.5-air:free',
     memory_limit: 20,
     message_delay: 0,
+    human_handoff_enabled: false,
     is_active: true,
     is_default: false,
   })
@@ -115,6 +119,34 @@ export default function Agents() {
     key: '',
   })
 
+  const [isTranscribingPending, setIsTranscribingPending] = useState(false)
+  const [isValidating, setIsValidating] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<{ openrouter?: string; assemblyai?: string } | null>(null)
+
+  const handleTranscribePending = async () => {
+    setIsTranscribingPending(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('evolution-transcribe-pending')
+      if (error) throw error
+      const { processed, remaining } = data as { processed: number; remaining: number }
+      if (processed === 0 && remaining === 0) {
+        toast.success('Nenhum áudio pendente encontrado')
+      } else if (processed > 0) {
+        toast.success(
+          remaining > 0
+            ? `${processed} áudio(s) transcritos. ${remaining} restante(s) — clique novamente para continuar.`
+            : `${processed} áudio(s) transcritos com sucesso!`
+        )
+      } else {
+        toast.info('Nenhum áudio pôde ser transcrito nesta rodada.')
+      }
+    } catch (err: any) {
+      toast.error('Erro ao transcrever: ' + (err?.message ?? 'Erro desconhecido'))
+    } finally {
+      setIsTranscribingPending(false)
+    }
+  }
+
   const handleOpenDialog = (agent?: AIAgent) => {
     if (agent) {
       setEditingAgent(agent)
@@ -123,10 +155,11 @@ export default function Agents() {
         description: agent.description || '',
         system_prompt: agent.system_prompt,
         api_key_id: agent.api_key_id || '',
-        audio_api_key_id: agent.audio_api_key_id || '',
-        model_id: agent.model_id || 'google/gemini-2.0-flash-lite:free',
+        audio_api_key_id: agent.audio_api_key_id || '__none__',
+        model_id: agent.model_id || 'z-ai/glm-4.5-air:free',
         memory_limit: agent.memory_limit ?? 20,
         message_delay: agent.message_delay ?? 0,
+        human_handoff_enabled: agent.human_handoff_enabled ?? false,
         is_active: agent.is_active,
         is_default: agent.is_default || false,
       })
@@ -137,14 +170,16 @@ export default function Agents() {
         description: '',
         system_prompt: t('default_system_prompt'),
         api_key_id: aiKeys.length > 0 ? aiKeys[0].id : '',
-        audio_api_key_id: '',
-        model_id: 'google/gemini-2.0-flash-lite:free',
+        audio_api_key_id: '__none__',
+        model_id: 'z-ai/glm-4.5-air:free',
         memory_limit: 20,
         message_delay: 0,
+        human_handoff_enabled: false,
         is_active: true,
         is_default: agents.length === 0,
       })
     }
+    setValidationErrors(null)
     setIsDialogOpen(true)
   }
 
@@ -180,12 +215,55 @@ export default function Agents() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setValidationErrors(null)
+
+    const audioKeyId = formData.audio_api_key_id === '__none__' ? null : formData.audio_api_key_id || null
+    const payload = { ...formData, audio_api_key_id: audioKeyId }
+
+    const needsValidation = !editingAgent
+      || editingAgent.model_id !== formData.model_id
+      || editingAgent.api_key_id !== formData.api_key_id
+      || editingAgent.audio_api_key_id !== audioKeyId
+
+    // Validate FIRST — keep modal open while testing
+    if (needsValidation && formData.api_key_id) {
+      setIsValidating(true)
+      try {
+        const { data, error } = await supabase.functions.invoke('ai-validate-agent', {
+          body: {
+            api_key_id: formData.api_key_id,
+            model_id: formData.model_id,
+            audio_api_key_id: audioKeyId,
+          },
+        })
+        if (error) throw error
+
+        const { results } = data as {
+          results: {
+            openrouter?: { ok: boolean; error?: string }
+            assemblyai?: { ok: boolean; error?: string }
+          }
+        }
+
+        const errors: { openrouter?: string; assemblyai?: string } = {}
+        if (results.openrouter && !results.openrouter.ok) errors.openrouter = results.openrouter.error
+        if (results.assemblyai && !results.assemblyai.ok) errors.assemblyai = results.assemblyai.error
+
+        if (Object.keys(errors).length > 0) {
+          setValidationErrors(errors)
+          return // Stay in modal — do NOT save
+        }
+      } catch (err: any) {
+        setValidationErrors({ openrouter: 'Falha na validação: ' + (err?.message ?? 'erro desconhecido') })
+        return
+      } finally {
+        setIsValidating(false)
+      }
+    }
+
+    // Validation passed (or not needed) — save
     setIsSubmitting(true)
     try {
-      const payload = {
-        ...formData,
-        audio_api_key_id: formData.audio_api_key_id || null,
-      }
       if (editingAgent) {
         await updateAgent(editingAgent.id, payload)
       } else {
@@ -454,13 +532,30 @@ export default function Agents() {
                 </h3>
                 <p className="text-sm text-muted-foreground mt-0.5">Chave AssemblyAI para transcrição automática de mensagens de voz</p>
               </div>
-              <Button
-                onClick={handleOpenAudioKeyDialog}
-                className="rounded-full shadow-subtle px-6 h-12 font-semibold"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Nova Chave de Áudio
-              </Button>
+              <div className="flex items-center gap-3">
+                {audioKeys.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={handleTranscribePending}
+                    disabled={isTranscribingPending}
+                    className="rounded-full px-5 h-10 font-semibold text-sm"
+                  >
+                    {isTranscribingPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Transcrever Pendentes
+                  </Button>
+                )}
+                <Button
+                  onClick={handleOpenAudioKeyDialog}
+                  className="rounded-full shadow-subtle px-6 h-12 font-semibold"
+                >
+                  <Plus className="mr-2 h-5 w-5" />
+                  Nova Chave de Áudio
+                </Button>
+              </div>
             </div>
 
             {keysLoading ? (
@@ -682,7 +777,7 @@ export default function Agents() {
                       <SelectValue placeholder="Sem transcrição (opcional)" />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl">
-                      <SelectItem value="" className="rounded-lg text-muted-foreground">
+                      <SelectItem value="__none__" className="rounded-lg text-muted-foreground">
                         Sem transcrição
                       </SelectItem>
                       {audioKeys.map((key) => (
@@ -739,6 +834,29 @@ export default function Agents() {
               </div>
 
               <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label className="font-semibold">Transferência para Humano</Label>
+                    <p className="text-[11px] text-muted-foreground font-medium">
+                      Permite que a IA transfira o atendimento emitindo a tag{' '}
+                      <code className="font-mono bg-muted px-1 rounded text-[10px]">&lt;transferir_humano&gt;</code>.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.human_handoff_enabled}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, human_handoff_enabled: checked })
+                    }
+                  />
+                </div>
+                {formData.human_handoff_enabled && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                    Atenção: modelos gratuitos com baixa capacidade podem não respeitar a instrução da tag.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-3">
                 <Label htmlFor="prompt" className="font-semibold">
                   {t('system_prompt')}
                 </Label>
@@ -789,13 +907,29 @@ export default function Agents() {
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isValidating}
                 className="rounded-full px-8 shadow-subtle bg-primary text-primary-foreground hover:opacity-90"
               >
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editingAgent ? t('save_changes') : t('create_agent')}
+                {(isSubmitting || isValidating) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isValidating ? 'Testando conexão...' : editingAgent ? t('save_changes') : t('create_agent')}
               </Button>
             </DialogFooter>
+            {validationErrors && (
+              <div className="px-8 pb-6 space-y-2">
+                {validationErrors.openrouter && (
+                  <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+                    <span className="font-semibold shrink-0">Modelo IA:</span>
+                    <span>{validationErrors.openrouter}</span>
+                  </div>
+                )}
+                {validationErrors.assemblyai && (
+                  <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+                    <span className="font-semibold shrink-0">AssemblyAI:</span>
+                    <span>{validationErrors.assemblyai}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </form>
         </DialogContent>
       </Dialog>
