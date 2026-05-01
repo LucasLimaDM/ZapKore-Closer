@@ -23,7 +23,7 @@ export async function processAiResponse(
 
     let { data: contact, error: contactError } = await supabase
       .from('whatsapp_contacts')
-      .select('ai_agent_id, remote_jid, pipeline_stage')
+      .select('ai_agent_id, remote_jid, pipeline_stage, msg_count_hour')
       .eq('id', contactId)
       .single()
 
@@ -40,7 +40,7 @@ export async function processAiResponse(
       if (identity?.phone_jid) {
         const { data: recovered, error: recoveredErr } = await supabase
           .from('whatsapp_contacts')
-          .select('id, ai_agent_id, remote_jid, pipeline_stage')
+          .select('id, ai_agent_id, remote_jid, pipeline_stage, msg_count_hour')
           .eq('user_id', userId)
           .eq('remote_jid', identity.phone_jid)
           .single()
@@ -74,6 +74,69 @@ export async function processAiResponse(
       console.log(
         `[AI Handler] EXIT handoff_active contactId=${contactId} remote_jid=${contact.remote_jid} pipeline_stage=${contact.pipeline_stage}`,
       )
+      return
+    }
+
+    const { data: integration, error: integError } = await supabase
+      .from('user_integrations')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (integError || !integration || !integration.instance_name) {
+      console.error(
+        `[AI Handler] EXIT integration_missing userId=${userId} instance_name=${integration?.instance_name ?? 'NULL'} ` +
+        `supabase_code=${integError?.code ?? 'none'} supabase_message=${integError?.message ?? 'none'}`,
+      )
+      return
+    }
+
+    const evoUrl = (
+      integration.evolution_api_url ||
+      Deno.env.get('EVOLUTION_API_URL') ||
+      ''
+    ).replace(/\/$/, '')
+    const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
+
+    if (!evoUrl) {
+      console.error(
+        `[AI Handler] EXIT evolution_url_missing userId=${userId} — save Evolution API URL in Settings > Credenciais`,
+      )
+      return
+    }
+    if (!evoKey) {
+      console.error(
+        `[AI Handler] EXIT evolution_key_missing userId=${userId} — save Evolution API Key in Settings > Credenciais`,
+      )
+      return
+    }
+
+    console.log(
+      `[AI Handler] evolution_ok url=${evoUrl.slice(0, 50)}... instance=${integration.instance_name} elapsed=${elapsed()}`,
+    )
+
+    // Rate limit: msg/hour check
+    if (
+      integration.rate_limit_enabled &&
+      contact.msg_count_hour >= (integration.rate_limit_msg_per_hour ?? 200)
+    ) {
+      console.log(
+        `[AI Handler] rate_limit_msg_hit contactId=${contactId} count=${contact.msg_count_hour} limit=${integration.rate_limit_msg_per_hour}`,
+      )
+      await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
+        method: 'POST',
+        headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: contact.remote_jid,
+          text: integration.rate_limit_message ?? 'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+        }),
+      }).catch((err: any) =>
+        console.error(`[AI Handler] rate_limit_msg_send_failed contactId=${contactId}:`, err),
+      )
+      await supabase
+        .from('whatsapp_contacts')
+        .update({ pipeline_stage: 'Contato Humano', last_message_at: new Date().toISOString() })
+        .eq('id', contactId)
       return
     }
 
@@ -306,43 +369,22 @@ export async function processAiResponse(
       console.log(`[AI Handler] handoff_tag_detected contactId=${contactId} — transferring to human`)
     }
 
-    const { data: integration, error: integError } = await supabase
-      .from('user_integrations')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+    // Token rate limit: count prompt + completion tokens
+    const totalTokens =
+      (completion.usage?.prompt_tokens ?? 0) + (completion.usage?.completion_tokens ?? 0)
+    let tokenLimitHit = false
 
-    if (integError || !integration || !integration.instance_name) {
-      console.error(
-        `[AI Handler] EXIT integration_missing userId=${userId} instance_name=${integration?.instance_name ?? 'NULL'} ` +
-        `supabase_code=${integError?.code ?? 'none'} supabase_message=${integError?.message ?? 'none'}`,
+    if (integration.rate_limit_enabled && totalTokens > 0) {
+      const { data: newTokenTotal } = await supabase.rpc('add_contact_tokens', {
+        p_contact_id: contactId,
+        p_tokens: totalTokens,
+        p_window_secs: 86400,
+      })
+      tokenLimitHit = (newTokenTotal ?? 0) >= (integration.rate_limit_tokens_per_day ?? 2000000)
+      console.log(
+        `[AI Handler] token_usage contactId=${contactId} added=${totalTokens} daily_total=${newTokenTotal ?? 0} limit=${integration.rate_limit_tokens_per_day} limit_hit=${tokenLimitHit}`,
       )
-      return
     }
-
-    const evoUrl = (
-      integration.evolution_api_url ||
-      Deno.env.get('EVOLUTION_API_URL') ||
-      ''
-    ).replace(/\/$/, '')
-    const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
-
-    if (!evoUrl) {
-      console.error(
-        `[AI Handler] EXIT evolution_url_missing userId=${userId} — save Evolution API URL in Settings > Credenciais`,
-      )
-      return
-    }
-    if (!evoKey) {
-      console.error(
-        `[AI Handler] EXIT evolution_key_missing userId=${userId} — save Evolution API Key in Settings > Credenciais`,
-      )
-      return
-    }
-
-    console.log(
-      `[AI Handler] evolution_ok url=${evoUrl.slice(0, 50)}... instance=${integration.instance_name} elapsed=${elapsed()}`,
-    )
 
     // Cancellation check 2: was a newer message received during the OpenRouter call?
     const { data: contactVersionBeforeSend } = await supabase
@@ -400,6 +442,20 @@ export async function processAiResponse(
     }
 
     console.log(`[AI Handler] send_ok http_status=${sendRes.status} elapsed=${elapsed()}`)
+
+    if (tokenLimitHit) {
+      console.log(`[AI Handler] token_limit_hit contactId=${contactId} — sending rate limit message and handoffing`)
+      await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
+        method: 'POST',
+        headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: contact.remote_jid,
+          text: integration.rate_limit_message ?? 'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+        }),
+      }).catch((err: any) =>
+        console.error(`[AI Handler] token_limit_msg_send_failed contactId=${contactId}:`, err),
+      )
+    }
 
     const result = await sendRes.json()
     const messageId = result?.key?.id || result?.id || crypto.randomUUID()
@@ -473,7 +529,7 @@ export async function processAiResponse(
     const { error: contactUpdateError } = await supabase
       .from('whatsapp_contacts')
       .update({
-        pipeline_stage: handoffDetected ? 'Contato Humano' : 'Em Conversa',
+        pipeline_stage: (handoffDetected || tokenLimitHit) ? 'Contato Humano' : 'Em Conversa',
         last_message_at: new Date().toISOString(),
       })
       .eq('id', contactId)
