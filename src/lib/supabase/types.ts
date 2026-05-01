@@ -203,6 +203,10 @@ export type Database = {
           instance_name: string | null
           is_setup_completed: boolean
           is_webhook_enabled: boolean
+          rate_limit_enabled: boolean
+          rate_limit_message: string
+          rate_limit_msg_per_hour: number
+          rate_limit_tokens_per_day: number
           status: string | null
           updated_at: string | null
           user_display_name: string | null
@@ -217,6 +221,10 @@ export type Database = {
           instance_name?: string | null
           is_setup_completed?: boolean
           is_webhook_enabled?: boolean
+          rate_limit_enabled?: boolean
+          rate_limit_message?: string
+          rate_limit_msg_per_hour?: number
+          rate_limit_tokens_per_day?: number
           status?: string | null
           updated_at?: string | null
           user_display_name?: string | null
@@ -231,6 +239,10 @@ export type Database = {
           instance_name?: string | null
           is_setup_completed?: boolean
           is_webhook_enabled?: boolean
+          rate_limit_enabled?: boolean
+          rate_limit_message?: string
+          rate_limit_msg_per_hour?: number
+          rate_limit_tokens_per_day?: number
           status?: string | null
           updated_at?: string | null
           user_display_name?: string | null
@@ -249,12 +261,16 @@ export type Database = {
           custom_phone: string | null
           id: string
           last_message_at: string | null
+          msg_count_hour: number
+          msg_window_start: string
           phone_number: string | null
           pipeline_stage: string | null
           profile_picture_url: string | null
           push_name: string | null
           remote_jid: string
           score: number | null
+          token_count_day: number
+          token_day_start: string
           user_id: string
         }
         Insert: {
@@ -267,12 +283,16 @@ export type Database = {
           custom_phone?: string | null
           id?: string
           last_message_at?: string | null
+          msg_count_hour?: number
+          msg_window_start?: string
           phone_number?: string | null
           pipeline_stage?: string | null
           profile_picture_url?: string | null
           push_name?: string | null
           remote_jid: string
           score?: number | null
+          token_count_day?: number
+          token_day_start?: string
           user_id: string
         }
         Update: {
@@ -285,12 +305,16 @@ export type Database = {
           custom_phone?: string | null
           id?: string
           last_message_at?: string | null
+          msg_count_hour?: number
+          msg_window_start?: string
           phone_number?: string | null
           pipeline_stage?: string | null
           profile_picture_url?: string | null
           push_name?: string | null
           remote_jid?: string
           score?: number | null
+          token_count_day?: number
+          token_day_start?: string
           user_id?: string
         }
         Relationships: [
@@ -358,8 +382,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_contact_tokens: {
+        Args: { p_contact_id: string; p_tokens: number; p_window_secs?: number }
+        Returns: number
+      }
       increment_ai_trigger_version: {
         Args: { p_contact_id: string }
+        Returns: number
+      }
+      increment_contact_msg: {
+        Args: { p_contact_id: string; p_window_secs?: number }
         Returns: number
       }
       merge_whatsapp_contacts: {
@@ -502,3 +534,5 @@ export const Constants = {
     Enums: {},
   },
 } as const
+A new version of Supabase CLI is available: v2.95.4 (currently installed v2.90.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

@@ -7,6 +7,12 @@ export interface UserIntegration {
   status: 'DISCONNECTED' | 'WAITING_QR' | 'CONNECTED'
   is_setup_completed?: boolean
   is_webhook_enabled?: boolean
+  captions_enabled?: boolean
+  user_display_name?: string | null
+  rate_limit_enabled: boolean
+  rate_limit_msg_per_hour: number
+  rate_limit_tokens_per_day: number
+  rate_limit_message: string
   created_at: string
 }
 
