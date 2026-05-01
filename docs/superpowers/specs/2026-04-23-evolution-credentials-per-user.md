@@ -10,6 +10,7 @@ Evolution API URL and key are currently read from shared Supabase env vars. No u
 ## Database
 
 No migration required. `user_integrations` already has:
+
 - `evolution_api_url text | null`
 - `evolution_api_key text | null`
 
@@ -24,13 +25,17 @@ All credential operations go through a new edge function `evolution-credentials`
 Resolves `user_id` from the Supabase JWT in the `Authorization` header.
 
 ### GET
+
 Returns masked credentials for display:
+
 ```json
 { "url": "https://api.example.com", "api_key_masked": "sk-***abc" }
 ```
+
 If no credentials set: `{ "url": null, "api_key_masked": null }`.
 
 ### POST `{ url: string, api_key: string }`
+
 1. Basic validation: url must be a valid URL, api_key non-empty.
 2. Call `GET /instance/fetchInstances` on the Evolution API using the provided credentials.
 3. If Evolution API returns non-2xx → return error, do not save.
@@ -46,6 +51,7 @@ Steps go from 2 → 3. New step 0 inserted before QR scan.
 **On mount:** call `evolution-credentials` GET. If `api_key_masked` is non-null → skip step 0, start at step 1.
 
 **Step 0 UI:**
+
 - Icon: `KeyRound` in progress indicator (added before `Smartphone` and `BrainCircuit`)
 - Form: URL field + API Key field (both required)
 - Button "Verificar e continuar": calls POST, shows loading spinner, disables fields during request
@@ -57,11 +63,13 @@ Steps go from 2 → 3. New step 0 inserted before QR scan.
 New card above existing WhatsApp Connection card.
 
 **Display state:**
+
 - Loads via `evolution-credentials` GET on mount
 - Shows: URL (plaintext) + API Key masked (`sk-***abc`)
 - Button "Editar"
 
 **Edit state (inline, no modal):**
+
 - Two blank input fields (URL + API Key)
 - Buttons: "Salvar" / "Cancelar"
 - "Salvar" calls POST with same validation flow
@@ -86,13 +94,13 @@ No changes to `DashboardLayout.tsx`. Gate logic unchanged: `is_setup_completed =
 
 ## Affected Files
 
-| File | Change |
-|---|---|
-| `supabase/functions/evolution-credentials/index.ts` | New |
-| `src/pages/Onboarding.tsx` | Add step 0 |
-| `src/pages/Settings.tsx` | Add credentials card |
+| File                                                    | Change                    |
+| ------------------------------------------------------- | ------------------------- |
+| `supabase/functions/evolution-credentials/index.ts`     | New                       |
+| `src/pages/Onboarding.tsx`                              | Add step 0                |
+| `src/pages/Settings.tsx`                                | Add credentials card      |
 | `supabase/functions/evolution-create-instance/index.ts` | Fix credential resolution |
-| `supabase/functions/evolution-get-qr/index.ts` | Fix credential resolution |
+| `supabase/functions/evolution-get-qr/index.ts`          | Fix credential resolution |
 
 ## Out of Scope
 

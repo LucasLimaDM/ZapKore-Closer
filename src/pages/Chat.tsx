@@ -28,7 +28,11 @@ import { ImageMessage } from '@/components/chat/ImageMessage'
 import { VideoMessage } from '@/components/chat/VideoMessage'
 import { StickerMessage } from '@/components/chat/StickerMessage'
 import { MediaLightbox } from '@/components/chat/MediaLightbox'
-import { isUnsupportedMessageType, hasUnrenderableText, SILENT_MESSAGE_TYPES } from '@/lib/message-types'
+import {
+  isUnsupportedMessageType,
+  hasUnrenderableText,
+  SILENT_MESSAGE_TYPES,
+} from '@/lib/message-types'
 import { UnsupportedMessage } from '@/components/chat/UnsupportedMessage'
 import { ReactionMessage } from '@/components/chat/ReactionMessage'
 import { ProtocolMessage } from '@/components/chat/ProtocolMessage'
@@ -111,7 +115,9 @@ export default function Chat() {
         (payload) => {
           setMessages((prev) => {
             if (payload.eventType === 'UPDATE') {
-              return prev.map((m) => (m.id === payload.new.id ? (payload.new as WhatsAppMessage) : m))
+              return prev.map((m) =>
+                m.id === payload.new.id ? (payload.new as WhatsAppMessage) : m,
+              )
             }
             if (prev.find((m) => m.id === payload.new.id)) return prev
             return [...prev, payload.new as WhatsAppMessage]
@@ -181,8 +187,7 @@ export default function Chat() {
   useLayoutEffect(() => {
     if (prevScrollHeightRef.current > 0 && messagesContainerRef.current) {
       const newScrollHeight = messagesContainerRef.current.scrollHeight
-      messagesContainerRef.current.scrollTop +=
-        newScrollHeight - prevScrollHeightRef.current
+      messagesContainerRef.current.scrollTop += newScrollHeight - prevScrollHeightRef.current
       prevScrollHeightRef.current = 0
     }
   }, [messages.length])
@@ -208,7 +213,9 @@ export default function Chat() {
   const startEditing = () => {
     setIsEditingContact(true)
     setEditedName(contact?.custom_name || contact?.push_name || '')
-    setEditedPhone(contact?.custom_phone || contact?.phone_number || contact?.remote_jid?.split('@')[0] || '')
+    setEditedPhone(
+      contact?.custom_phone || contact?.phone_number || contact?.remote_jid?.split('@')[0] || '',
+    )
   }
 
   const saveContactEdits = async () => {
@@ -225,7 +232,9 @@ export default function Chat() {
     if (error) {
       toast.error(t('error_save' as TranslationKey) || 'Failed to save changes')
     } else {
-      setContact((prev) => (prev ? { ...prev, custom_name: editedName, custom_phone: editedPhone } : null))
+      setContact((prev) =>
+        prev ? { ...prev, custom_name: editedName, custom_phone: editedPhone } : null,
+      )
       toast.success(t('contact_updated' as TranslationKey) || 'Contact updated')
       setIsEditingContact(false)
     }
@@ -310,11 +319,13 @@ export default function Chat() {
   }
 
   const groupedMessages: { [key: string]: WhatsAppMessage[] } = {}
-  messages.filter((msg) => !SILENT_MESSAGE_TYPES.has(msg.type ?? '')).forEach((msg) => {
-    const dateStr = formatMessageDate(msg.timestamp || msg.created_at || new Date().toISOString())
-    if (!groupedMessages[dateStr]) groupedMessages[dateStr] = []
-    groupedMessages[dateStr].push(msg)
-  })
+  messages
+    .filter((msg) => !SILENT_MESSAGE_TYPES.has(msg.type ?? ''))
+    .forEach((msg) => {
+      const dateStr = formatMessageDate(msg.timestamp || msg.created_at || new Date().toISOString())
+      if (!groupedMessages[dateStr]) groupedMessages[dateStr] = []
+      groupedMessages[dateStr].push(msg)
+    })
 
   return (
     <div className="max-w-5xl mx-auto h-[calc(100vh-theme(spacing.20))] sm:h-[calc(100vh-theme(spacing.24))] p-4 sm:p-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple">
@@ -369,11 +380,26 @@ export default function Chat() {
               )}
               {isEditingContact && (
                 <div className="flex gap-1 mt-1">
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 rounded-full" onClick={() => setIsEditingContact(false)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 rounded-full"
+                    onClick={() => setIsEditingContact(false)}
+                  >
                     <X className="h-4 w-4" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 rounded-full text-primary" onClick={saveContactEdits} disabled={isUpdatingContact}>
-                    {isUpdatingContact ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 rounded-full text-primary"
+                    onClick={saveContactEdits}
+                    disabled={isUpdatingContact}
+                  >
+                    {isUpdatingContact ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               )}
@@ -477,7 +503,9 @@ export default function Chat() {
                         {msg.type === 'audioMessage' || msg.type === 'pttMessage' ? (
                           <AudioPlayer
                             blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
-                            isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
+                            isLoading={
+                              (audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'
+                            }
                             fromMe={msg.from_me}
                             transcript={msg.transcript}
                           />

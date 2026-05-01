@@ -4,7 +4,7 @@
 
 **Goal:** Move Evolution API credentials from shared env vars to per-user storage in `user_integrations`, with UI to set/update them in onboarding and settings.
 
-**Architecture:** New edge function `evolution-credentials` handles all credential operations server-side — the full API key never reaches the frontend (only first-3 + *** + last-3 mask). Onboarding gains a step 0 (credential form before QR). Settings gains a card to view/edit credentials. Two existing functions (`evolution-create-instance`, `evolution-get-qr`) are fixed to read from DB instead of env-only.
+**Architecture:** New edge function `evolution-credentials` handles all credential operations server-side — the full API key never reaches the frontend (only first-3 + \*\*\* + last-3 mask). Onboarding gains a step 0 (credential form before QR). Settings gains a card to view/edit credentials. Two existing functions (`evolution-create-instance`, `evolution-get-qr`) are fixed to read from DB instead of env-only.
 
 **Tech Stack:** Deno/Supabase Edge Functions, React 19, TypeScript, Tailwind, shadcn/ui
 
@@ -12,24 +12,26 @@
 
 ## File Map
 
-| File | Action |
-|---|---|
-| `supabase/functions/evolution-credentials/index.ts` | Create |
-| `supabase/functions/evolution-credentials/deno.json` | Create |
+| File                                                    | Action                             |
+| ------------------------------------------------------- | ---------------------------------- |
+| `supabase/functions/evolution-credentials/index.ts`     | Create                             |
+| `supabase/functions/evolution-credentials/deno.json`    | Create                             |
 | `supabase/functions/evolution-create-instance/index.ts` | Modify — fix credential resolution |
-| `supabase/functions/evolution-get-qr/index.ts` | Modify — fix credential resolution |
-| `src/pages/Onboarding.tsx` | Modify — add step 0 |
-| `src/pages/Settings.tsx` | Modify — add credentials card |
+| `supabase/functions/evolution-get-qr/index.ts`          | Modify — fix credential resolution |
+| `src/pages/Onboarding.tsx`                              | Modify — add step 0                |
+| `src/pages/Settings.tsx`                                | Modify — add credentials card      |
 
 ---
 
 ### Task 1: Create `evolution-credentials` edge function
 
 **Files:**
+
 - Create: `supabase/functions/evolution-credentials/deno.json`
 - Create: `supabase/functions/evolution-credentials/index.ts`
 
 The function accepts two actions via POST body:
+
 - `{ action: 'get' }` → returns masked credentials
 - `{ action: 'save', url: string, api_key: string }` → validates against Evolution API then saves
 
@@ -75,7 +77,10 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     })
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseClient.auth.getUser()
     if (userError || !user) throw new Error('Unauthorized')
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
@@ -116,7 +121,9 @@ Deno.serve(async (req: Request) => {
 
       if (!testRes.ok) {
         const body = await testRes.text()
-        throw new Error(`Evolution API validation failed (${testRes.status}): ${body.slice(0, 200)}`)
+        throw new Error(
+          `Evolution API validation failed (${testRes.status}): ${body.slice(0, 200)}`,
+        )
       }
 
       await supabaseAdmin
@@ -165,6 +172,7 @@ git commit -m "feat: add evolution-credentials edge function (masked get + valid
 ### Task 2: Fix `evolution-create-instance` credential resolution
 
 **Files:**
+
 - Modify: `supabase/functions/evolution-create-instance/index.ts`
 
 Currently reads credentials from env only (lines 14–20). Must read from `user_integrations` first (already fetched at line 24), fall back to env.
@@ -172,6 +180,7 @@ Currently reads credentials from env only (lines 14–20). Must read from `user_
 - [ ] **Step 1: Replace the credential block**
 
 Find this block (lines 12–20):
+
 ```ts
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -185,12 +194,14 @@ if (!evolutionApiUrl || !evolutionApiKey) {
 ```
 
 Replace with:
+
 ```ts
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 ```
 
 Then after `const { data: integ } = await supabase.from('user_integrations')...single()` and `if (!integ)` check, add:
+
 ```ts
 const evolutionApiUrlRaw = integ.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || ''
 const evolutionApiUrl = evolutionApiUrlRaw.replace(/\/$/, '')
@@ -221,6 +232,7 @@ git commit -m "fix: evolution-create-instance reads credentials from user_integr
 ### Task 3: Fix `evolution-get-qr` credential resolution
 
 **Files:**
+
 - Modify: `supabase/functions/evolution-get-qr/index.ts`
 
 Same issue as Task 2 — credentials read from env only (lines 14–20).
@@ -228,6 +240,7 @@ Same issue as Task 2 — credentials read from env only (lines 14–20).
 - [ ] **Step 1: Replace the credential block**
 
 Find this block (lines 12–20):
+
 ```ts
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -241,12 +254,14 @@ if (!evolutionApiUrl || !evolutionApiKey) {
 ```
 
 Replace with:
+
 ```ts
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 ```
 
 Then after `if (!integ) throw new Error('Missing configuration')`, add:
+
 ```ts
 const evolutionApiUrlRaw = integ.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || ''
 const evolutionApiUrl = evolutionApiUrlRaw.replace(/\/$/, '')
@@ -277,6 +292,7 @@ git commit -m "fix: evolution-get-qr reads credentials from user_integrations DB
 ### Task 4: Add step 0 to Onboarding
 
 **Files:**
+
 - Modify: `src/pages/Onboarding.tsx`
 
 Steps go 2→3. Step 0 = credential form. On mount, call `evolution-credentials` GET — if `api_key_masked` is non-null, skip to step 1. Progress indicator gets a third icon (`KeyRound` before `Smartphone`).
@@ -386,7 +402,9 @@ export default function Onboarding() {
     } else if (step === 1 && integration?.status === 'CONNECTED') {
       setStep(2)
     }
-    return () => { if (interval) clearInterval(interval) }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
   }, [step, integration?.id, integration?.status, setIntegration])
 
   useEffect(() => {
@@ -407,7 +425,12 @@ export default function Onboarding() {
           .select('status')
           .eq('id', jobId)
           .single()
-        if (error || data?.status === 'failed' || data?.status === 'completed' || attempts >= maxAttempts) {
+        if (
+          error ||
+          data?.status === 'failed' ||
+          data?.status === 'completed' ||
+          attempts >= maxAttempts
+        ) {
           clearInterval(interval)
           resolve()
         }
@@ -491,13 +514,17 @@ export default function Onboarding() {
               >
                 <KeyRound size={20} />
               </div>
-              <div className={`w-10 h-0.5 transition-colors ${step >= 1 ? 'bg-primary' : 'bg-border'}`} />
+              <div
+                className={`w-10 h-0.5 transition-colors ${step >= 1 ? 'bg-primary' : 'bg-border'}`}
+              />
               <div
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${step >= 1 ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted text-muted-foreground'}`}
               >
                 <Smartphone size={20} />
               </div>
-              <div className={`w-10 h-0.5 transition-colors ${step >= 2 ? 'bg-primary' : 'bg-border'}`} />
+              <div
+                className={`w-10 h-0.5 transition-colors ${step >= 2 ? 'bg-primary' : 'bg-border'}`}
+              />
               <div
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${step >= 2 ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted text-muted-foreground'}`}
               >
@@ -550,7 +577,9 @@ export default function Onboarding() {
                 className="rounded-full h-11 font-semibold mt-2"
               >
                 {savingCredentials ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...</>
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                  </>
                 ) : (
                   'Verificar e continuar'
                 )}
@@ -619,6 +648,7 @@ git commit -m "feat: add credentials step 0 to onboarding before QR scan"
 ### Task 5: Add credentials card to Settings
 
 **Files:**
+
 - Modify: `src/pages/Settings.tsx`
 
 New card above the existing WhatsApp Connection card. Loads masked credentials via `evolution-credentials` GET on mount. Shows URL + masked key. Edit mode opens blank input fields inline; save calls POST.
@@ -842,7 +872,9 @@ export default function Settings() {
                     className="rounded-full px-6 h-10 font-semibold"
                   >
                     {savingCreds ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...</>
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                      </>
                     ) : (
                       'Salvar'
                     )}
@@ -861,15 +893,23 @@ export default function Settings() {
               <div className="space-y-3">
                 <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 flex flex-col gap-3">
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">URL</span>
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      URL
+                    </span>
                     <span className="text-sm font-medium text-foreground truncate">
-                      {credUrl || <span className="text-muted-foreground italic">Não configurado</span>}
+                      {credUrl || (
+                        <span className="text-muted-foreground italic">Não configurado</span>
+                      )}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">API Key</span>
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      API Key
+                    </span>
                     <span className="text-sm font-mono font-medium text-foreground">
-                      {credMasked || <span className="text-muted-foreground italic">Não configurado</span>}
+                      {credMasked || (
+                        <span className="text-muted-foreground italic">Não configurado</span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -935,7 +975,9 @@ export default function Settings() {
                   </span>
                   <div className="text-sm font-medium text-foreground bg-background px-3 py-1.5 rounded-lg border border-border/50 flex items-center gap-2">
                     {integration?.is_setup_completed ? (
-                      <><CheckCircle2 className="w-4 h-4 text-green-500" /> Completed</>
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-green-500" /> Completed
+                      </>
                     ) : (
                       'Pending'
                     )}
@@ -1058,6 +1100,7 @@ pnpm dev --port 8085
 Open `http://localhost:8085`. Log in as a user with no credentials set.
 
 Expected:
+
 1. Redirected to `/app/onboarding`
 2. Step 0 shows credential form (KeyRound icon active)
 3. Submitting bad credentials → toast error, form stays open
@@ -1068,6 +1111,7 @@ Expected:
 Open Settings page.
 
 Expected:
+
 1. Evolution API card loads masked URL + key
 2. "Editar" button shows blank input fields
 3. Bad credentials → toast error, fields stay open

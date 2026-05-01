@@ -29,8 +29,9 @@ export const translations = {
     account_created: 'Account created!',
     check_email_title: 'Check your email',
     check_email_desc: 'We sent a confirmation link to',
-    check_email_instruction: 'Click the link to activate your account. You can open it on any device — phone, desktop, incognito.',
-    check_email_spam: 'If you don\'t see it, check your spam folder.',
+    check_email_instruction:
+      'Click the link to activate your account. You can open it on any device — phone, desktop, incognito.',
+    check_email_spam: "If you don't see it, check your spam folder.",
     back_to_login: 'Back to login',
 
     overview: 'Overview',
@@ -147,7 +148,8 @@ export const translations = {
     api_key_label: 'API Key',
     model_label: 'AI Model',
     memory_limit_label: 'Memory Limit',
-    memory_limit_help: 'Number of past messages included in context. 20 messages = ~10 interactions.',
+    memory_limit_help:
+      'Number of past messages included in context. 20 messages = ~10 interactions.',
     select_api_key: 'Select or create an API Key',
     create_new_key: 'Add as new key...',
     new_key_name: 'Key Name (e.g. OpenRouter Personal)',
@@ -212,7 +214,8 @@ export const translations = {
     account_created: 'Conta criada!',
     check_email_title: 'Verifique seu email',
     check_email_desc: 'Enviamos um link de confirmação para',
-    check_email_instruction: 'Clique no link para ativar sua conta. Pode abrir em qualquer dispositivo — celular, desktop, aba anônima.',
+    check_email_instruction:
+      'Clique no link para ativar sua conta. Pode abrir em qualquer dispositivo — celular, desktop, aba anônima.',
     check_email_spam: 'Se não encontrar, verifique a pasta de spam.',
     back_to_login: 'Voltar ao login',
 
@@ -333,7 +336,8 @@ export const translations = {
     api_key_label: 'Chave de API',
     model_label: 'Modelo de IA',
     memory_limit_label: 'Limite de Memória',
-    memory_limit_help: 'Número de mensagens anteriores incluídas no contexto. 20 mensagens = ~10 interações.',
+    memory_limit_help:
+      'Número de mensagens anteriores incluídas no contexto. 20 mensagens = ~10 interações.',
     select_api_key: 'Selecione ou crie uma Chave de API',
     create_new_key: 'Adicionar como nova chave...',
     new_key_name: 'Nome da Chave (ex: OpenRouter Pessoal)',

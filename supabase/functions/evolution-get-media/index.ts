@@ -16,7 +16,10 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     })
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseClient.auth.getUser()
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -65,17 +68,14 @@ Deno.serve(async (req: Request) => {
 
     const downloadUrl = `${evoUrl}/chat/getBase64FromMediaMessage/${integration.instance_name}`
 
-    const evoRes = await fetch(
-      downloadUrl,
-      {
-        method: 'POST',
-        headers: { apikey: evoKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: { key: { id: messageId } },
-          convertToMp4: false,
-        }),
-      },
-    )
+    const evoRes = await fetch(downloadUrl, {
+      method: 'POST',
+      headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: { key: { id: messageId } },
+        convertToMp4: false,
+      }),
+    })
 
     if (!evoRes.ok) {
       const errText = await evoRes.text()

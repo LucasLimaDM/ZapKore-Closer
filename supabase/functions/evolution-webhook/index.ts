@@ -102,11 +102,7 @@ Deno.serve(async (req: Request) => {
         const update = e?.update || e?.message?.update || e
         const protoType = update?.message?.protocolMessage?.type
         const stub = update?.messageStubType
-        const isRevoke =
-          protoType === 0 ||
-          stub === 'REVOKE' ||
-          stub === 1 ||
-          stub === 68 // Baileys REVOKE stub types
+        const isRevoke = protoType === 0 || stub === 'REVOKE' || stub === 1 || stub === 68 // Baileys REVOKE stub types
         if (!isRevoke) continue
         const mid = e?.key?.id || e?.keyId || e?.messageId || update?.key?.id
         if (mid) await markRevoked(mid)
@@ -415,11 +411,16 @@ Deno.serve(async (req: Request) => {
               `[WEBHOOK] Skip AI processing: Message is from me (remoteJid: ${effectiveJid}, instance: ${instanceName})`,
             )
           } else if (type === 'audioMessage' || type === 'pttMessage') {
-            const { data: newVersion, error: versionError } = await supabase
-              .rpc('increment_ai_trigger_version', { p_contact_id: contact.id })
+            const { data: newVersion, error: versionError } = await supabase.rpc(
+              'increment_ai_trigger_version',
+              { p_contact_id: contact.id },
+            )
 
             if (versionError || newVersion === null || newVersion === undefined) {
-              console.error(`[WEBHOOK] Failed to increment ai_trigger_version for contact ${contact.id}:`, versionError)
+              console.error(
+                `[WEBHOOK] Failed to increment ai_trigger_version for contact ${contact.id}:`,
+                versionError,
+              )
             } else {
               const myVersion = newVersion as number
               console.log(
@@ -452,11 +453,16 @@ Deno.serve(async (req: Request) => {
               `[WEBHOOK] Skip AI processing: Message type is not text/conversation (type: ${type}, remoteJid: ${effectiveJid}, instance: ${instanceName})`,
             )
           } else {
-            const { data: newVersion, error: versionError } = await supabase
-              .rpc('increment_ai_trigger_version', { p_contact_id: contact.id })
+            const { data: newVersion, error: versionError } = await supabase.rpc(
+              'increment_ai_trigger_version',
+              { p_contact_id: contact.id },
+            )
 
             if (versionError || newVersion === null || newVersion === undefined) {
-              console.error(`[WEBHOOK] Failed to increment ai_trigger_version for contact ${contact.id}:`, versionError)
+              console.error(
+                `[WEBHOOK] Failed to increment ai_trigger_version for contact ${contact.id}:`,
+                versionError,
+              )
             } else {
               const myVersion = newVersion as number
               console.log(
@@ -470,8 +476,8 @@ Deno.serve(async (req: Request) => {
                   processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion),
                 )
               } else {
-                processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion).catch((err: any) =>
-                  console.error('[WEBHOOK] Background AI task failed:', err),
+                processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion).catch(
+                  (err: any) => console.error('[WEBHOOK] Background AI task failed:', err),
                 )
               }
             }

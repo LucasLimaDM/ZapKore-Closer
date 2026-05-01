@@ -33,28 +33,27 @@ export function useAudioPreloader(messages: WhatsAppMessage[]): Map<string, Audi
     let cancelled = false
 
     const fetchAll = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       const token = session?.access_token
       if (!token || cancelled) return
 
       await Promise.allSettled(
         audioMessages.map(async (msg) => {
           try {
-            const res = await fetch(
-              `${supabaseUrl}/functions/v1/evolution-get-media`,
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  apikey: supabaseAnonKey,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  messageId: msg.message_id,
-                  contactId: msg.contact_id,
-                }),
+            const res = await fetch(`${supabaseUrl}/functions/v1/evolution-get-media`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                apikey: supabaseAnonKey,
+                'Content-Type': 'application/json',
               },
-            )
+              body: JSON.stringify({
+                messageId: msg.message_id,
+                contactId: msg.contact_id,
+              }),
+            })
 
             if (!res.ok) throw new Error(`HTTP ${res.status}`)
 

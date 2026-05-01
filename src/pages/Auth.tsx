@@ -76,8 +76,7 @@ export default function Auth() {
               {t('check_email_title')}
             </CardTitle>
             <CardDescription className="text-base font-medium">
-              {t('check_email_desc')}{' '}
-              <span className="font-semibold text-foreground">{email}</span>
+              {t('check_email_desc')} <span className="font-semibold text-foreground">{email}</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="px-10 pb-4 text-center space-y-3">

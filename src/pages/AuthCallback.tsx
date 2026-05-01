@@ -8,7 +8,9 @@ export default function AuthCallback() {
   const done = useRef(false)
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (done.current) return
       if (event === 'SIGNED_IN' && session) {
         done.current = true

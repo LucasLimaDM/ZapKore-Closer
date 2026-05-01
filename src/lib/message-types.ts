@@ -1,4 +1,13 @@
-import { Image, Video, FileText, MapPin, Contact2, Smile, File, type LucideIcon } from 'lucide-react'
+import {
+  Image,
+  Video,
+  FileText,
+  MapPin,
+  Contact2,
+  Smile,
+  File,
+  type LucideIcon,
+} from 'lucide-react'
 import { type TranslationKey } from '@/hooks/use-language'
 
 export type MessageTypeInfo = {
@@ -87,9 +96,11 @@ export const hasUnrenderableText = (text: string | null | undefined): boolean =>
 }
 
 export const getMessageTypeConfig = (type: string): MessageTypeInfo => {
-  return messageTypeConfig[type] ?? {
-    label: 'media',
-    translationKey: 'message_type_media',
-    icon: File,
-  }
+  return (
+    messageTypeConfig[type] ?? {
+      label: 'media',
+      translationKey: 'message_type_media',
+      icon: File,
+    }
+  )
 }

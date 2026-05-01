@@ -1,7 +1,7 @@
 # Message Batching Delay — Design Spec
 
 **Date:** 2026-04-20  
-**Status:** Approved  
+**Status:** Approved
 
 ## Problem
 
@@ -57,12 +57,12 @@ After OpenRouter returns:
 
 ## Components Changed
 
-| File | Change |
-|---|---|
-| `supabase/migrations/20260420_message_delay.sql` | New migration adding both columns |
-| `supabase/functions/evolution-webhook/index.ts` | Increment `ai_trigger_version`, pass `myVersion` to background task |
-| `supabase/functions/evolution-webhook/ai-handler.ts` | Accept `triggerVersion` param, add 2 cancellation checks |
-| Agent settings UI | Add `message_delay` field (0–30s) alongside `memory_limit` |
+| File                                                 | Change                                                              |
+| ---------------------------------------------------- | ------------------------------------------------------------------- |
+| `supabase/migrations/20260420_message_delay.sql`     | New migration adding both columns                                   |
+| `supabase/functions/evolution-webhook/index.ts`      | Increment `ai_trigger_version`, pass `myVersion` to background task |
+| `supabase/functions/evolution-webhook/ai-handler.ts` | Accept `triggerVersion` param, add 2 cancellation checks            |
+| Agent settings UI                                    | Add `message_delay` field (0–30s) alongside `memory_limit`          |
 
 ## AI Handler Signature Change
 
@@ -81,8 +81,8 @@ export async function processAiResponse(
   contactId: string,
   supabaseUrl: string,
   supabaseKey: string,
-  triggerVersion: number,  // new param
-  messageDelay: number,    // new param (seconds)
+  triggerVersion: number, // new param
+  messageDelay: number, // new param (seconds)
 ): Promise<void>
 ```
 
@@ -93,18 +93,19 @@ export async function processAiResponse(
 
 ## Edge Cases
 
-| Scenario | Behavior |
-|---|---|
-| 5 messages in burst | 5 background tasks sleep; only the last passes check 1; 4 tasks exit with a single lightweight query |
-| Message arrives during OpenRouter call | Webhook increments version; after LLM returns, check 2 detects the change and discards; new task fires AI again with full context |
-| `message_delay = 0` | `setTimeout(0)` returns immediately; 2 extra DB reads per message (negligible) |
-| UPDATE fails | Webhook logs error and does NOT spawn background task — message is saved, agent skips responding this round |
-| Two webhooks hit same contact simultaneously | Postgres serializes the UPDATE per row; versions increment correctly (1→2); only the highest-version task survives |
-| Edge Function timeout | Max delay 30s + OpenRouter ~10s + overhead << 150s wall time limit |
+| Scenario                                     | Behavior                                                                                                                          |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 5 messages in burst                          | 5 background tasks sleep; only the last passes check 1; 4 tasks exit with a single lightweight query                              |
+| Message arrives during OpenRouter call       | Webhook increments version; after LLM returns, check 2 detects the change and discards; new task fires AI again with full context |
+| `message_delay = 0`                          | `setTimeout(0)` returns immediately; 2 extra DB reads per message (negligible)                                                    |
+| UPDATE fails                                 | Webhook logs error and does NOT spawn background task — message is saved, agent skips responding this round                       |
+| Two webhooks hit same contact simultaneously | Postgres serializes the UPDATE per row; versions increment correctly (1→2); only the highest-version task survives                |
+| Edge Function timeout                        | Max delay 30s + OpenRouter ~10s + overhead << 150s wall time limit                                                                |
 
 ## UI
 
 Add `message_delay` field to the agent settings page (same location as `memory_limit`):
+
 - Input type: number, min 0, max 30, step 1
 - Label: "Delay entre mensagens (segundos)"
 - Default: 0

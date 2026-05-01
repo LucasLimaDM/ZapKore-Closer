@@ -16,35 +16,35 @@ A centralized configuration object mapping Evolution API message types to their 
 ```typescript
 // src/lib/message-types.ts
 export const messageTypeConfig: Record<string, MessageTypeInfo> = {
-  imageMessage: { 
+  imageMessage: {
     label: 'image',
     translationKey: 'message_type_image',
-    icon: Image 
+    icon: Image,
   },
-  videoMessage: { 
+  videoMessage: {
     label: 'video',
     translationKey: 'message_type_video',
-    icon: Video 
+    icon: Video,
   },
-  documentMessage: { 
+  documentMessage: {
     label: 'document',
     translationKey: 'message_type_document',
-    icon: FileText 
+    icon: FileText,
   },
-  locationMessage: { 
+  locationMessage: {
     label: 'location',
     translationKey: 'message_type_location',
-    icon: MapPin 
+    icon: MapPin,
   },
-  contactMessage: { 
+  contactMessage: {
     label: 'contact',
     translationKey: 'message_type_contact',
-    icon: Contact 
+    icon: Contact,
   },
-  stickerMessage: { 
+  stickerMessage: {
     label: 'sticker',
     translationKey: 'message_type_sticker',
-    icon: Smile 
+    icon: Smile,
   },
 }
 
@@ -55,7 +55,13 @@ export type MessageTypeInfo = {
 }
 
 export const isUnsupportedMessageType = (type: string | null): boolean => {
-  return type !== null && type !== 'text' && type !== 'audioMessage' && type !== 'pttMessage' && type in messageTypeConfig
+  return (
+    type !== null &&
+    type !== 'text' &&
+    type !== 'audioMessage' &&
+    type !== 'pttMessage' &&
+    type in messageTypeConfig
+  )
 }
 ```
 
@@ -72,11 +78,11 @@ interface UnsupportedMessageProps {
 export function UnsupportedMessage({ type, fromMe }: UnsupportedMessageProps) {
   const { t } = useLanguage()
   const config = messageTypeConfig[type]
-  
+
   if (!config) return null
-  
+
   const Icon = config.icon
-  
+
   return (
     <div className="flex items-center gap-2">
       <Icon className="h-4 w-4 text-muted-foreground opacity-60" />

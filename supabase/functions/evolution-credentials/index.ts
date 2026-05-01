@@ -22,7 +22,10 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     })
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseClient.auth.getUser()
     if (userError || !user) throw new Error('Unauthorized')
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
@@ -63,7 +66,9 @@ Deno.serve(async (req: Request) => {
 
       if (!testRes.ok) {
         const body = await testRes.text()
-        throw new Error(`Evolution API validation failed (${testRes.status}): ${body.slice(0, 200)}`)
+        throw new Error(
+          `Evolution API validation failed (${testRes.status}): ${body.slice(0, 200)}`,
+        )
       }
 
       await supabaseAdmin

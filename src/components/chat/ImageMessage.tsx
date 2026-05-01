@@ -71,9 +71,7 @@ export function ImageMessage({ msg, entry, request, fromMe, onOpenLightbox }: Im
           />
         )}
 
-        {blobUrl && (
-          <img src={blobUrl} className="absolute inset-0 w-full h-full object-cover" />
-        )}
+        {blobUrl && <img src={blobUrl} className="absolute inset-0 w-full h-full object-cover" />}
 
         {status === 'loading' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/25">

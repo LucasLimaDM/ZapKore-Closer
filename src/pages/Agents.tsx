@@ -24,11 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Command,
   CommandEmpty,
@@ -37,14 +33,22 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash2, Edit2, Loader2, Star, Check, Key, Globe, ShieldCheck, ChevronsUpDown, Mic, RefreshCw } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Edit2,
+  Loader2,
+  Star,
+  Check,
+  Key,
+  Globe,
+  ShieldCheck,
+  ChevronsUpDown,
+  Mic,
+  RefreshCw,
+} from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { AIAgent, UserAPIKey } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -83,7 +87,14 @@ export default function Agents() {
     toggleAgentStatus,
     setAsDefault,
   } = useAgents()
-  const { apiKeys, aiKeys, audioKeys, loading: keysLoading, createAPIKey, deleteAPIKey } = useAPIKeys()
+  const {
+    apiKeys,
+    aiKeys,
+    audioKeys,
+    loading: keysLoading,
+    createAPIKey,
+    deleteAPIKey,
+  } = useAPIKeys()
   const { t } = useLanguage()
 
   const [activeTab, setActiveTab] = useState('agents')
@@ -93,7 +104,7 @@ export default function Agents() {
   const [editingAgent, setEditingAgent] = useState<AIAgent | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isModelPopoverOpen, setIsModelPopoverOpen] = useState(false)
-  
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -121,7 +132,10 @@ export default function Agents() {
 
   const [isTranscribingPending, setIsTranscribingPending] = useState(false)
   const [isValidating, setIsValidating] = useState(false)
-  const [validationErrors, setValidationErrors] = useState<{ openrouter?: string; assemblyai?: string } | null>(null)
+  const [validationErrors, setValidationErrors] = useState<{
+    openrouter?: string
+    assemblyai?: string
+  } | null>(null)
 
   const handleTranscribePending = async () => {
     setIsTranscribingPending(true)
@@ -135,7 +149,7 @@ export default function Agents() {
         toast.success(
           remaining > 0
             ? `${processed} áudio(s) transcritos. ${remaining} restante(s) — clique novamente para continuar.`
-            : `${processed} áudio(s) transcritos com sucesso!`
+            : `${processed} áudio(s) transcritos com sucesso!`,
         )
       } else {
         toast.info('Nenhum áudio pôde ser transcrito nesta rodada.')
@@ -217,13 +231,15 @@ export default function Agents() {
     e.preventDefault()
     setValidationErrors(null)
 
-    const audioKeyId = formData.audio_api_key_id === '__none__' ? null : formData.audio_api_key_id || null
+    const audioKeyId =
+      formData.audio_api_key_id === '__none__' ? null : formData.audio_api_key_id || null
     const payload = { ...formData, audio_api_key_id: audioKeyId }
 
-    const needsValidation = !editingAgent
-      || editingAgent.model_id !== formData.model_id
-      || editingAgent.api_key_id !== formData.api_key_id
-      || editingAgent.audio_api_key_id !== audioKeyId
+    const needsValidation =
+      !editingAgent ||
+      editingAgent.model_id !== formData.model_id ||
+      editingAgent.api_key_id !== formData.api_key_id ||
+      editingAgent.audio_api_key_id !== audioKeyId
 
     // Validate FIRST — keep modal open while testing
     if (needsValidation && formData.api_key_id) {
@@ -246,15 +262,19 @@ export default function Agents() {
         }
 
         const errors: { openrouter?: string; assemblyai?: string } = {}
-        if (results.openrouter && !results.openrouter.ok) errors.openrouter = results.openrouter.error
-        if (results.assemblyai && !results.assemblyai.ok) errors.assemblyai = results.assemblyai.error
+        if (results.openrouter && !results.openrouter.ok)
+          errors.openrouter = results.openrouter.error
+        if (results.assemblyai && !results.assemblyai.ok)
+          errors.assemblyai = results.assemblyai.error
 
         if (Object.keys(errors).length > 0) {
           setValidationErrors(errors)
           return // Stay in modal — do NOT save
         }
       } catch (err: any) {
-        setValidationErrors({ openrouter: 'Falha na validação: ' + (err?.message ?? 'erro desconhecido') })
+        setValidationErrors({
+          openrouter: 'Falha na validação: ' + (err?.message ?? 'erro desconhecido'),
+        })
         return
       } finally {
         setIsValidating(false)
@@ -289,9 +309,10 @@ export default function Agents() {
     }
   }
 
-  const selectedApiKey = useMemo(() =>
-    aiKeys.find((key) => key.id === formData.api_key_id),
-  [aiKeys, formData.api_key_id])
+  const selectedApiKey = useMemo(
+    () => aiKeys.find((key) => key.id === formData.api_key_id),
+    [aiKeys, formData.api_key_id],
+  )
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 p-6 md:p-12 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-apple min-h-full bg-background">
@@ -306,10 +327,16 @@ export default function Agents() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-8">
         <TabsList className="bg-muted/50 p-1 rounded-full border border-border/40">
-          <TabsTrigger value="agents" className="rounded-full px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-subtle">
+          <TabsTrigger
+            value="agents"
+            className="rounded-full px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-subtle"
+          >
             {t('agents_title')}
           </TabsTrigger>
-          <TabsTrigger value="connections" className="rounded-full px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-subtle">
+          <TabsTrigger
+            value="connections"
+            className="rounded-full px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-subtle"
+          >
             Conexões de IA
           </TabsTrigger>
         </TabsList>
@@ -334,7 +361,11 @@ export default function Agents() {
               <CardContent className="flex flex-col items-center justify-center p-20 text-center">
                 <h3 className="text-xl font-bold text-foreground mb-2">{t('no_agents_title')}</h3>
                 <p className="text-muted-foreground max-w-sm mb-6">{t('no_agents_desc')}</p>
-                <Button onClick={() => handleOpenDialog()} variant="outline" className="rounded-full">
+                <Button
+                  onClick={() => handleOpenDialog()}
+                  variant="outline"
+                  className="rounded-full"
+                >
                   {t('create_agent')}
                 </Button>
               </CardContent>
@@ -375,14 +406,14 @@ export default function Agents() {
                     <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed h-10">
                       {agent.description || t('no_description')}
                     </p>
-                    
+
                     <div className="flex flex-wrap gap-2">
                       <div className="px-2.5 py-1 bg-primary/5 border border-primary/10 rounded-lg text-[10px] font-bold text-primary uppercase tracking-tight">
                         {agent.model_id.split('/').pop()}
                       </div>
                       <div className="px-2.5 py-1 bg-muted/50 border border-border/40 rounded-lg text-[10px] font-medium text-muted-foreground uppercase tracking-tight flex items-center gap-1">
                         <Key className="h-3 w-3" />
-                        {aiKeys.find(k => k.id === agent.api_key_id)?.name || 'Sem Conexão'}
+                        {aiKeys.find((k) => k.id === agent.api_key_id)?.name || 'Sem Conexão'}
                       </div>
                     </div>
 
@@ -444,7 +475,9 @@ export default function Agents() {
                   <Key className="h-5 w-5 text-primary" />
                   Modelos de IA
                 </h3>
-                <p className="text-sm text-muted-foreground mt-0.5">Chaves de API para provedores de linguagem (OpenRouter, OpenAI, etc.)</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Chaves de API para provedores de linguagem (OpenRouter, OpenAI, etc.)
+                </p>
               </div>
               <Button
                 onClick={handleOpenKeyDialog}
@@ -465,7 +498,9 @@ export default function Agents() {
                   <div className="h-14 w-14 bg-muted rounded-3xl flex items-center justify-center mb-5">
                     <Key className="h-7 w-7 text-muted-foreground" />
                   </div>
-                  <h3 className="text-lg font-bold text-foreground mb-2">Nenhuma conexão de IA configurada</h3>
+                  <h3 className="text-lg font-bold text-foreground mb-2">
+                    Nenhuma conexão de IA configurada
+                  </h3>
                   <p className="text-muted-foreground max-w-sm mb-5 text-sm">
                     Adicione uma chave de API para conectar seus agentes à inteligência artificial.
                   </p>
@@ -530,7 +565,9 @@ export default function Agents() {
                   <Mic className="h-5 w-5 text-primary" />
                   Áudio & Transcrição
                 </h3>
-                <p className="text-sm text-muted-foreground mt-0.5">Chave AssemblyAI para transcrição automática de mensagens de voz</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Chave AssemblyAI para transcrição automática de mensagens de voz
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 {audioKeys.length > 0 && (
@@ -568,11 +605,18 @@ export default function Agents() {
                   <div className="h-14 w-14 bg-muted rounded-3xl flex items-center justify-center mb-5">
                     <Mic className="h-7 w-7 text-muted-foreground" />
                   </div>
-                  <h3 className="text-lg font-bold text-foreground mb-2">Nenhuma chave de áudio configurada</h3>
+                  <h3 className="text-lg font-bold text-foreground mb-2">
+                    Nenhuma chave de áudio configurada
+                  </h3>
                   <p className="text-muted-foreground max-w-sm mb-5 text-sm">
-                    Adicione sua chave AssemblyAI para habilitar transcrição automática de áudios do WhatsApp.
+                    Adicione sua chave AssemblyAI para habilitar transcrição automática de áudios do
+                    WhatsApp.
                   </p>
-                  <Button onClick={handleOpenAudioKeyDialog} variant="outline" className="rounded-full">
+                  <Button
+                    onClick={handleOpenAudioKeyDialog}
+                    variant="outline"
+                    className="rounded-full"
+                  >
                     Configurar AssemblyAI
                   </Button>
                 </CardContent>
@@ -677,7 +721,10 @@ export default function Agents() {
                     />
                     <Popover open={isModelPopoverOpen} onOpenChange={setIsModelPopoverOpen}>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" className="h-12 w-12 p-0 rounded-xl shrink-0 border-border/60">
+                        <Button
+                          variant="outline"
+                          className="h-12 w-12 p-0 rounded-xl shrink-0 border-border/60"
+                        >
                           <ChevronsUpDown className="h-4 w-4 opacity-50" />
                         </Button>
                       </PopoverTrigger>
@@ -699,8 +746,8 @@ export default function Agents() {
                                 >
                                   <Check
                                     className={cn(
-                                      "mr-2 h-4 w-4",
-                                      formData.model_id === model.id ? "opacity-100" : "opacity-0"
+                                      'mr-2 h-4 w-4',
+                                      formData.model_id === model.id ? 'opacity-100' : 'opacity-0',
                                     )}
                                   />
                                   {model.name}
@@ -713,7 +760,7 @@ export default function Agents() {
                     </Popover>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   <Label className="font-semibold flex justify-between items-center">
                     {t('api_key_label')}
@@ -759,7 +806,9 @@ export default function Agents() {
 
                 <div className="space-y-3">
                   <Label className="font-semibold flex justify-between items-center">
-                    <span className="flex items-center gap-1.5"><Mic className="h-3.5 w-3.5" /> Transcrição de Áudio</span>
+                    <span className="flex items-center gap-1.5">
+                      <Mic className="h-3.5 w-3.5" /> Transcrição de Áudio
+                    </span>
                     <Button
                       type="button"
                       variant="link"
@@ -791,7 +840,10 @@ export default function Agents() {
               </div>
 
               <div className="space-y-3">
-                <Label htmlFor="memory_limit" className="font-semibold flex items-center justify-between">
+                <Label
+                  htmlFor="memory_limit"
+                  className="font-semibold flex items-center justify-between"
+                >
                   {t('memory_limit_label')}
                   <span className="text-[10px] text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-full">
                     {formData.memory_limit} mensagens
@@ -803,7 +855,9 @@ export default function Agents() {
                   min="0"
                   max="100"
                   value={formData.memory_limit}
-                  onChange={(e) => setFormData({ ...formData, memory_limit: parseInt(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, memory_limit: parseInt(e.target.value) || 0 })
+                  }
                   className="rounded-xl h-12"
                 />
                 <p className="text-[11px] text-muted-foreground font-medium">
@@ -812,7 +866,10 @@ export default function Agents() {
               </div>
 
               <div className="space-y-3">
-                <Label htmlFor="message_delay" className="font-semibold flex items-center justify-between">
+                <Label
+                  htmlFor="message_delay"
+                  className="font-semibold flex items-center justify-between"
+                >
                   Delay entre mensagens
                   <span className="text-[10px] text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-full">
                     {formData.message_delay}s
@@ -825,11 +882,14 @@ export default function Agents() {
                   max="30"
                   step="1"
                   value={formData.message_delay}
-                  onChange={(e) => setFormData({ ...formData, message_delay: parseInt(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, message_delay: parseInt(e.target.value) || 0 })
+                  }
                   className="rounded-xl h-12"
                 />
                 <p className="text-[11px] text-muted-foreground font-medium">
-                  Tempo de espera após cada mensagem antes de responder. Se outra mensagem chegar dentro desse tempo, o timer reinicia.
+                  Tempo de espera após cada mensagem antes de responder. Se outra mensagem chegar
+                  dentro desse tempo, o timer reinicia.
                 </p>
               </div>
 
@@ -839,7 +899,10 @@ export default function Agents() {
                     <Label className="font-semibold">Transferência para Humano</Label>
                     <p className="text-[11px] text-muted-foreground font-medium">
                       Permite que a IA transfira o atendimento emitindo a tag{' '}
-                      <code className="font-mono bg-muted px-1 rounded text-[10px]">&lt;transferir_humano&gt;</code>.
+                      <code className="font-mono bg-muted px-1 rounded text-[10px]">
+                        &lt;transferir_humano&gt;
+                      </code>
+                      .
                     </p>
                   </div>
                   <Switch
@@ -851,7 +914,8 @@ export default function Agents() {
                 </div>
                 {formData.human_handoff_enabled && (
                   <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                    Atenção: modelos gratuitos com baixa capacidade podem não respeitar a instrução da tag.
+                    Atenção: modelos gratuitos com baixa capacidade podem não respeitar a instrução
+                    da tag.
                   </p>
                 )}
               </div>
@@ -872,7 +936,7 @@ export default function Agents() {
                   {t('system_prompt_help')}
                 </p>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center justify-between p-4 bg-muted/30 rounded-2xl border border-border/40">
                   <div className="space-y-0.5">
@@ -910,8 +974,14 @@ export default function Agents() {
                 disabled={isSubmitting || isValidating}
                 className="rounded-full px-8 shadow-subtle bg-primary text-primary-foreground hover:opacity-90"
               >
-                {(isSubmitting || isValidating) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isValidating ? 'Testando conexão...' : editingAgent ? t('save_changes') : t('create_agent')}
+                {(isSubmitting || isValidating) && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isValidating
+                  ? 'Testando conexão...'
+                  : editingAgent
+                    ? t('save_changes')
+                    : t('create_agent')}
               </Button>
             </DialogFooter>
             {validationErrors && (
@@ -946,28 +1016,37 @@ export default function Agents() {
                 Configurar AssemblyAI
               </DialogTitle>
               <DialogDescription className="text-base">
-                Adicione sua chave de API do AssemblyAI para habilitar transcrição automática de áudios.
+                Adicione sua chave de API do AssemblyAI para habilitar transcrição automática de
+                áudios.
               </DialogDescription>
             </DialogHeader>
 
             <div className="p-8 md:p-10 grid grid-cols-1 md:grid-cols-5 gap-10">
               <div className="md:col-span-3 space-y-8">
                 <div className="space-y-3">
-                  <Label htmlFor="audio_key_name" className="font-bold text-sm uppercase tracking-wider text-muted-foreground">
+                  <Label
+                    htmlFor="audio_key_name"
+                    className="font-bold text-sm uppercase tracking-wider text-muted-foreground"
+                  >
                     Nome da Chave
                   </Label>
                   <Input
                     id="audio_key_name"
                     required
                     value={audioKeyFormData.name}
-                    onChange={(e) => setAudioKeyFormData({ ...audioKeyFormData, name: e.target.value })}
+                    onChange={(e) =>
+                      setAudioKeyFormData({ ...audioKeyFormData, name: e.target.value })
+                    }
                     placeholder="Ex: AssemblyAI Principal"
                     className="rounded-2xl h-14 text-lg border-border/60 bg-muted/10"
                   />
                 </div>
 
                 <div className="space-y-3">
-                  <Label htmlFor="audio_api_key_value" className="font-bold text-sm uppercase tracking-wider text-muted-foreground">
+                  <Label
+                    htmlFor="audio_api_key_value"
+                    className="font-bold text-sm uppercase tracking-wider text-muted-foreground"
+                  >
                     Chave de API
                   </Label>
                   <Input
@@ -975,7 +1054,9 @@ export default function Agents() {
                     type="password"
                     required
                     value={audioKeyFormData.key}
-                    onChange={(e) => setAudioKeyFormData({ ...audioKeyFormData, key: e.target.value })}
+                    onChange={(e) =>
+                      setAudioKeyFormData({ ...audioKeyFormData, key: e.target.value })
+                    }
                     placeholder="94db1a5a..."
                     className="rounded-2xl h-14 font-mono text-base border-border/60 bg-muted/10"
                   />
@@ -1043,14 +1124,18 @@ export default function Agents() {
                 Configurar Nova Conexão de IA
               </DialogTitle>
               <DialogDescription className="text-base">
-                Conecte sua conta a um provedor de modelos de linguagem para habilitar a inteligência artificial.
+                Conecte sua conta a um provedor de modelos de linguagem para habilitar a
+                inteligência artificial.
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="p-8 md:p-10 grid grid-cols-1 md:grid-cols-5 gap-10">
               <div className="md:col-span-3 space-y-8">
                 <div className="space-y-3">
-                  <Label htmlFor="key_name" className="font-bold text-sm uppercase tracking-wider text-muted-foreground">
+                  <Label
+                    htmlFor="key_name"
+                    className="font-bold text-sm uppercase tracking-wider text-muted-foreground"
+                  >
                     Nome da Conexão
                   </Label>
                   <Input
@@ -1064,7 +1149,10 @@ export default function Agents() {
                 </div>
 
                 <div className="space-y-3">
-                  <Label htmlFor="provider" className="font-bold text-sm uppercase tracking-wider text-muted-foreground">
+                  <Label
+                    htmlFor="provider"
+                    className="font-bold text-sm uppercase tracking-wider text-muted-foreground"
+                  >
                     Provedor de IA
                   </Label>
                   <Select
@@ -1076,7 +1164,11 @@ export default function Agents() {
                     </SelectTrigger>
                     <SelectContent className="rounded-2xl">
                       {AI_PROVIDERS.map((provider) => (
-                        <SelectItem key={provider.id} value={provider.id} className="py-3 rounded-xl">
+                        <SelectItem
+                          key={provider.id}
+                          value={provider.id}
+                          className="py-3 rounded-xl"
+                        >
                           <span className="font-semibold">{provider.name}</span>
                         </SelectItem>
                       ))}
@@ -1085,7 +1177,10 @@ export default function Agents() {
                 </div>
 
                 <div className="space-y-3">
-                  <Label htmlFor="api_key_value" className="font-bold text-sm uppercase tracking-wider text-muted-foreground">
+                  <Label
+                    htmlFor="api_key_value"
+                    className="font-bold text-sm uppercase tracking-wider text-muted-foreground"
+                  >
                     Chave de API (API Key)
                   </Label>
                   <Input
@@ -1107,14 +1202,17 @@ export default function Agents() {
                     Como obter?
                   </h4>
                   <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-                    Você pode criar e gerenciar suas chaves de API diretamente no painel do provedor selecionado.
+                    Você pode criar e gerenciar suas chaves de API diretamente no painel do provedor
+                    selecionado.
                   </p>
-                  
+
                   <div className="space-y-4">
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Links Oficiais</p>
-                    <a 
-                      href={AI_PROVIDERS.find(p => p.id === keyFormData.provider)?.url} 
-                      target="_blank" 
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                      Links Oficiais
+                    </p>
+                    <a
+                      href={AI_PROVIDERS.find((p) => p.id === keyFormData.provider)?.url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center justify-between p-3 bg-background rounded-xl border border-border/40 hover:border-primary/40 transition-colors group"
                     >
@@ -1125,7 +1223,8 @@ export default function Agents() {
 
                   <div className="mt-10 p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10">
                     <p className="text-[10px] font-medium text-amber-600/80 leading-relaxed">
-                      Segurança: Suas chaves são criptografadas e nunca serão compartilhadas com terceiros.
+                      Segurança: Suas chaves são criptografadas e nunca serão compartilhadas com
+                      terceiros.
                     </p>
                   </div>
                 </div>

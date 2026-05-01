@@ -14,19 +14,20 @@
 
 ## File Map
 
-| Action | Path | Responsibility |
-|---|---|---|
-| Create | `supabase/functions/evolution-get-media/index.ts` | Proxy: auth → DB lookup → Evolution API download → binary response |
-| Create | `supabase/functions/evolution-get-media/deno.json` | Deno imports config (copy of other functions) |
-| Create | `src/hooks/use-audio-preloader.ts` | Eager parallel preload of audio blobs on chat open |
-| Create | `src/components/chat/AudioPlayer.tsx` | Audio player UI: play/pause, seek, speed |
-| Modify | `src/pages/Chat.tsx` | Wire hook + render AudioPlayer for audio message types |
+| Action | Path                                               | Responsibility                                                     |
+| ------ | -------------------------------------------------- | ------------------------------------------------------------------ |
+| Create | `supabase/functions/evolution-get-media/index.ts`  | Proxy: auth → DB lookup → Evolution API download → binary response |
+| Create | `supabase/functions/evolution-get-media/deno.json` | Deno imports config (copy of other functions)                      |
+| Create | `src/hooks/use-audio-preloader.ts`                 | Eager parallel preload of audio blobs on chat open                 |
+| Create | `src/components/chat/AudioPlayer.tsx`              | Audio player UI: play/pause, seek, speed                           |
+| Modify | `src/pages/Chat.tsx`                               | Wire hook + render AudioPlayer for audio message types             |
 
 ---
 
 ## Task 1: Edge Function — `evolution-get-media`
 
 **Files:**
+
 - Create: `supabase/functions/evolution-get-media/deno.json`
 - Create: `supabase/functions/evolution-get-media/index.ts`
 
@@ -62,7 +63,10 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     })
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseClient.auth.getUser()
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -111,14 +115,11 @@ Deno.serve(async (req: Request) => {
     const evoUrl = evoUrlRaw ? evoUrlRaw.replace(/\/$/, '') : ''
     const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
 
-    const evoRes = await fetch(
-      `${evoUrl}/message/download-media/${integration.instance_name}`,
-      {
-        method: 'POST',
-        headers: { apikey: evoKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: message.raw }),
-      },
-    )
+    const evoRes = await fetch(`${evoUrl}/message/download-media/${integration.instance_name}`, {
+      method: 'POST',
+      headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: message.raw }),
+    })
 
     if (!evoRes.ok) {
       const errText = await evoRes.text()
@@ -197,6 +198,7 @@ git commit -m "feat: add evolution-get-media edge function for audio proxy"
 ## Task 2: Frontend Hook — `useAudioPreloader`
 
 **Files:**
+
 - Create: `src/hooks/use-audio-preloader.ts`
 
 - [ ] **Step 1: Create the hook**
@@ -238,28 +240,27 @@ export function useAudioPreloader(messages: WhatsAppMessage[]): Map<string, Audi
     let cancelled = false
 
     const fetchAll = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       const token = session?.access_token
       if (!token || cancelled) return
 
       await Promise.allSettled(
         audioMessages.map(async (msg) => {
           try {
-            const res = await fetch(
-              `${supabaseUrl}/functions/v1/evolution-get-media`,
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  apikey: supabaseAnonKey,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  messageId: msg.message_id,
-                  contactId: msg.contact_id,
-                }),
+            const res = await fetch(`${supabaseUrl}/functions/v1/evolution-get-media`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                apikey: supabaseAnonKey,
+                'Content-Type': 'application/json',
               },
-            )
+              body: JSON.stringify({
+                messageId: msg.message_id,
+                contactId: msg.contact_id,
+              }),
+            })
 
             if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
@@ -315,6 +316,7 @@ git commit -m "feat: add useAudioPreloader hook for eager audio blob preloading"
 ## Task 3: Frontend Component — `AudioPlayer`
 
 **Files:**
+
 - Create: `src/components/chat/AudioPlayer.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -486,6 +488,7 @@ git commit -m "feat: add AudioPlayer component with seek, speed control, and loa
 ## Task 4: Integrate into `Chat.tsx`
 
 **Files:**
+
 - Modify: `src/pages/Chat.tsx`
 
 - [ ] **Step 1: Add imports at the top of `Chat.tsx`**
@@ -516,15 +519,17 @@ Find this line in the JSX (currently line 459):
 Replace with:
 
 ```tsx
-{msg.type === 'audioMessage' || msg.type === 'pttMessage' ? (
-  <AudioPlayer
-    blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
-    isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
-    fromMe={msg.from_me}
-  />
-) : (
-  <span className="whitespace-pre-wrap break-words">{msg.text}</span>
-)}
+{
+  msg.type === 'audioMessage' || msg.type === 'pttMessage' ? (
+    <AudioPlayer
+      blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
+      isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
+      fromMe={msg.from_me}
+    />
+  ) : (
+    <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+  )
+}
 ```
 
 - [ ] **Step 4: Verify it builds without errors**
@@ -542,6 +547,7 @@ pnpm dev
 ```
 
 Open `http://localhost:8080`, navigate to the chat with Lucas Dias (+5511936207809), confirm:
+
 1. The previously unsupported audio message now shows the player UI with a spinner
 2. After 1–2 seconds the spinner disappears and a play button appears
 3. Clicking play plays the audio

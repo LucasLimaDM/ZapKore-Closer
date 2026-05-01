@@ -22,7 +22,12 @@ import { toast } from 'sonner'
 
 const STAGES = [
   { id: 'Em Conversa', icon: MessageSquare, color: 'text-foreground', bg: 'bg-muted/80' },
-  { id: 'Contato Humano', icon: UserCheck, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+  {
+    id: 'Contato Humano',
+    icon: UserCheck,
+    color: 'text-amber-600',
+    bg: 'bg-amber-50 dark:bg-amber-950/30',
+  },
   { id: 'Em Espera', icon: Clock, color: 'text-muted-foreground', bg: 'bg-muted/40' },
   { id: 'Resolvido', icon: CheckCircle2, color: 'text-muted-foreground', bg: 'bg-muted/40' },
   { id: 'Perdido', icon: XCircle, color: 'text-muted-foreground', bg: 'bg-muted/40' },

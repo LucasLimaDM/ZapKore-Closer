@@ -12,20 +12,21 @@
 
 ## File Map
 
-| File | Action |
-|---|---|
+| File                                                   | Action                                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
 | `supabase/migrations/20260420000000_message_delay.sql` | Create — adds `ai_trigger_version` column, `message_delay` column, `increment_ai_trigger_version` RPC |
-| `supabase/functions/evolution-webhook/ai-handler.ts` | Modify — add `triggerVersion` param, sleep, 2 cancellation checks |
-| `supabase/functions/evolution-webhook/index.ts` | Modify — call RPC to increment version, pass `myVersion` to `processAiResponse` |
-| `src/lib/types.ts` | Modify — add `message_delay: number` to `AIAgent` interface |
-| `src/hooks/use-agents.ts` | Modify — include `message_delay` in `createAgent` and `updateAgent` |
-| `src/pages/Agents.tsx` | Modify — add `message_delay` field to `formData` state and dialog UI |
+| `supabase/functions/evolution-webhook/ai-handler.ts`   | Modify — add `triggerVersion` param, sleep, 2 cancellation checks                                     |
+| `supabase/functions/evolution-webhook/index.ts`        | Modify — call RPC to increment version, pass `myVersion` to `processAiResponse`                       |
+| `src/lib/types.ts`                                     | Modify — add `message_delay: number` to `AIAgent` interface                                           |
+| `src/hooks/use-agents.ts`                              | Modify — include `message_delay` in `createAgent` and `updateAgent`                                   |
+| `src/pages/Agents.tsx`                                 | Modify — add `message_delay` field to `formData` state and dialog UI                                  |
 
 ---
 
 ## Task 1: DB Migration
 
 **Files:**
+
 - Create: `supabase/migrations/20260420000000_message_delay.sql`
 
 - [ ] **Step 1: Create the migration file**
@@ -57,6 +58,7 @@ $$;
 - [ ] **Step 2: Apply the migration via Supabase MCP**
 
 Use `mcp__claude_ai_Supabase__apply_migration` with the SQL above, or run:
+
 ```bash
 supabase db push
 ```
@@ -66,6 +68,7 @@ Expected: migration applies without error; columns exist on both tables; functio
 - [ ] **Step 3: Verify columns exist**
 
 Run in Supabase SQL Editor:
+
 ```sql
 SELECT column_name, data_type, column_default
 FROM information_schema.columns
@@ -96,6 +99,7 @@ git commit -m "feat: add ai_trigger_version + message_delay columns and RPC"
 ## Task 2: Update AI Handler — Sleep + Cancellation Checks
 
 **Files:**
+
 - Modify: `supabase/functions/evolution-webhook/ai-handler.ts`
 
 Context: `processAiResponse` currently takes `(userId, contactId, supabaseUrl, supabaseKey)`. We add a fifth parameter `triggerVersion: number`. Inside, after loading the agent we read `message_delay`, sleep, then check the version twice.
@@ -103,6 +107,7 @@ Context: `processAiResponse` currently takes `(userId, contactId, supabaseUrl, s
 - [ ] **Step 1: Update the function signature**
 
 Find the current signature at the top of `ai-handler.ts`:
+
 ```typescript
 export async function processAiResponse(
   userId: string,
@@ -113,6 +118,7 @@ export async function processAiResponse(
 ```
 
 Replace with:
+
 ```typescript
 export async function processAiResponse(
   userId: string,
@@ -126,6 +132,7 @@ export async function processAiResponse(
 - [ ] **Step 2: Add sleep + first cancellation check after agent is loaded**
 
 The agent is loaded at line ~38 with:
+
 ```typescript
 if (agentError || !agent) {
   console.log(...)
@@ -136,29 +143,34 @@ if (agentError || !agent) {
 Immediately after that block (after the `if (agentError || !agent)` guard), insert:
 
 ```typescript
-    const messageDelay = agent.message_delay ?? 0
+const messageDelay = agent.message_delay ?? 0
 
-    if (messageDelay > 0) {
-      console.log(`[AI Handler] Debounce: sleeping ${messageDelay}s for contact ${contactId} (triggerVersion: ${triggerVersion})`)
-      await new Promise((resolve) => setTimeout(resolve, messageDelay * 1000))
-    }
+if (messageDelay > 0) {
+  console.log(
+    `[AI Handler] Debounce: sleeping ${messageDelay}s for contact ${contactId} (triggerVersion: ${triggerVersion})`,
+  )
+  await new Promise((resolve) => setTimeout(resolve, messageDelay * 1000))
+}
 
-    // Cancellation check 1: was a newer message received during the sleep?
-    const { data: contactVersion } = await supabase
-      .from('whatsapp_contacts')
-      .select('ai_trigger_version')
-      .eq('id', contactId)
-      .single()
+// Cancellation check 1: was a newer message received during the sleep?
+const { data: contactVersion } = await supabase
+  .from('whatsapp_contacts')
+  .select('ai_trigger_version')
+  .eq('id', contactId)
+  .single()
 
-    if (contactVersion?.ai_trigger_version !== triggerVersion) {
-      console.log(`[AI Handler] Debounce: newer message arrived during delay, aborting (contact ${contactId}, expected v${triggerVersion}, got v${contactVersion?.ai_trigger_version})`)
-      return
-    }
+if (contactVersion?.ai_trigger_version !== triggerVersion) {
+  console.log(
+    `[AI Handler] Debounce: newer message arrived during delay, aborting (contact ${contactId}, expected v${triggerVersion}, got v${contactVersion?.ai_trigger_version})`,
+  )
+  return
+}
 ```
 
 - [ ] **Step 3: Add second cancellation check before sending**
 
 Find the line that sends the message via Evolution API:
+
 ```typescript
     const sendRes = await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
 ```
@@ -166,22 +178,25 @@ Find the line that sends the message via Evolution API:
 Immediately **before** that `fetch` call, insert:
 
 ```typescript
-    // Cancellation check 2: was a newer message received during the OpenRouter call?
-    const { data: contactVersionBeforeSend } = await supabase
-      .from('whatsapp_contacts')
-      .select('ai_trigger_version')
-      .eq('id', contactId)
-      .single()
+// Cancellation check 2: was a newer message received during the OpenRouter call?
+const { data: contactVersionBeforeSend } = await supabase
+  .from('whatsapp_contacts')
+  .select('ai_trigger_version')
+  .eq('id', contactId)
+  .single()
 
-    if (contactVersionBeforeSend?.ai_trigger_version !== triggerVersion) {
-      console.log(`[AI Handler] Debounce: newer message arrived during LLM call, discarding response (contact ${contactId}, expected v${triggerVersion}, got v${contactVersionBeforeSend?.ai_trigger_version})`)
-      return
-    }
+if (contactVersionBeforeSend?.ai_trigger_version !== triggerVersion) {
+  console.log(
+    `[AI Handler] Debounce: newer message arrived during LLM call, discarding response (contact ${contactId}, expected v${triggerVersion}, got v${contactVersionBeforeSend?.ai_trigger_version})`,
+  )
+  return
+}
 ```
 
 - [ ] **Step 4: Verify the full modified ai-handler.ts reads correctly**
 
 The logical flow should now be:
+
 1. Load contact → check ai_agent_id
 2. Load agent → check active
 3. Sleep if message_delay > 0
@@ -202,6 +217,7 @@ git commit -m "feat: add debounce sleep and dual cancellation checks to AI handl
 ## Task 3: Update Webhook — Increment Version + Pass to Handler
 
 **Files:**
+
 - Modify: `supabase/functions/evolution-webhook/index.ts`
 
 Context: The webhook currently calls `processAiResponse(userId, contact.id, supabaseUrl, supabaseKey)` without a version. We need to (a) call the RPC to increment `ai_trigger_version` and get back `myVersion`, and (b) pass `myVersion` to `processAiResponse`.
@@ -209,6 +225,7 @@ Context: The webhook currently calls `processAiResponse(userId, contact.id, supa
 - [ ] **Step 1: Replace the AI trigger block in index.ts**
 
 Find the existing AI dispatch section (around line 338–354):
+
 ```typescript
           } else {
             console.log(
@@ -230,6 +247,7 @@ Find the existing AI dispatch section (around line 338–354):
 ```
 
 Replace with:
+
 ```typescript
           } else {
             const { data: newVersion, error: versionError } = await supabase
@@ -278,12 +296,14 @@ git commit -m "feat: increment ai_trigger_version and pass to processAiResponse"
 ## Task 4: Update Frontend — Types + Hook
 
 **Files:**
+
 - Modify: `src/lib/types.ts` — add `message_delay` to `AIAgent`
 - Modify: `src/hooks/use-agents.ts` — include `message_delay` in create/update
 
 - [ ] **Step 1: Add message_delay to AIAgent type**
 
 In `src/lib/types.ts`, find the `AIAgent` interface (line 24):
+
 ```typescript
 export interface AIAgent {
   id: string
@@ -302,6 +322,7 @@ export interface AIAgent {
 ```
 
 Replace with:
+
 ```typescript
 export interface AIAgent {
   id: string
@@ -323,75 +344,71 @@ export interface AIAgent {
 - [ ] **Step 2: Include message_delay in createAgent**
 
 In `src/hooks/use-agents.ts`, find the `createAgent` insert payload (around line 38–48):
+
 ```typescript
-    const { data, error } = await supabase
-      .from('ai_agents')
-      .insert({
-        user_id: user.id,
-        name: agent.name!,
-        description: agent.description,
-        system_prompt: agent.system_prompt!,
-        api_key_id: agent.api_key_id,
-        model_id: agent.model_id || 'google/gemini-2.0-flash-lite:free',
-        memory_limit: agent.memory_limit ?? 20,
-        is_active: agent.is_active,
-        is_default: agent.is_default,
-      })
+const { data, error } = await supabase.from('ai_agents').insert({
+  user_id: user.id,
+  name: agent.name!,
+  description: agent.description,
+  system_prompt: agent.system_prompt!,
+  api_key_id: agent.api_key_id,
+  model_id: agent.model_id || 'google/gemini-2.0-flash-lite:free',
+  memory_limit: agent.memory_limit ?? 20,
+  is_active: agent.is_active,
+  is_default: agent.is_default,
+})
 ```
 
 Replace with:
+
 ```typescript
-    const { data, error } = await supabase
-      .from('ai_agents')
-      .insert({
-        user_id: user.id,
-        name: agent.name!,
-        description: agent.description,
-        system_prompt: agent.system_prompt!,
-        api_key_id: agent.api_key_id,
-        model_id: agent.model_id || 'google/gemini-2.0-flash-lite:free',
-        memory_limit: agent.memory_limit ?? 20,
-        message_delay: agent.message_delay ?? 0,
-        is_active: agent.is_active,
-        is_default: agent.is_default,
-      })
+const { data, error } = await supabase.from('ai_agents').insert({
+  user_id: user.id,
+  name: agent.name!,
+  description: agent.description,
+  system_prompt: agent.system_prompt!,
+  api_key_id: agent.api_key_id,
+  model_id: agent.model_id || 'google/gemini-2.0-flash-lite:free',
+  memory_limit: agent.memory_limit ?? 20,
+  message_delay: agent.message_delay ?? 0,
+  is_active: agent.is_active,
+  is_default: agent.is_default,
+})
 ```
 
 - [ ] **Step 3: Include message_delay in updateAgent**
 
 In `src/hooks/use-agents.ts`, find the `updateAgent` update payload (around line 70–81):
+
 ```typescript
-    const { data, error } = await supabase
-      .from('ai_agents')
-      .update({
-        name: agent.name,
-        description: agent.description,
-        system_prompt: agent.system_prompt,
-        api_key_id: agent.api_key_id,
-        model_id: agent.model_id,
-        memory_limit: agent.memory_limit,
-        is_active: agent.is_active,
-        is_default: agent.is_default,
-        updated_at: new Date().toISOString(),
-      })
+const { data, error } = await supabase.from('ai_agents').update({
+  name: agent.name,
+  description: agent.description,
+  system_prompt: agent.system_prompt,
+  api_key_id: agent.api_key_id,
+  model_id: agent.model_id,
+  memory_limit: agent.memory_limit,
+  is_active: agent.is_active,
+  is_default: agent.is_default,
+  updated_at: new Date().toISOString(),
+})
 ```
 
 Replace with:
+
 ```typescript
-    const { data, error } = await supabase
-      .from('ai_agents')
-      .update({
-        name: agent.name,
-        description: agent.description,
-        system_prompt: agent.system_prompt,
-        api_key_id: agent.api_key_id,
-        model_id: agent.model_id,
-        memory_limit: agent.memory_limit,
-        message_delay: agent.message_delay,
-        is_active: agent.is_active,
-        is_default: agent.is_default,
-        updated_at: new Date().toISOString(),
-      })
+const { data, error } = await supabase.from('ai_agents').update({
+  name: agent.name,
+  description: agent.description,
+  system_prompt: agent.system_prompt,
+  api_key_id: agent.api_key_id,
+  model_id: agent.model_id,
+  memory_limit: agent.memory_limit,
+  message_delay: agent.message_delay,
+  is_active: agent.is_active,
+  is_default: agent.is_default,
+  updated_at: new Date().toISOString(),
+})
 ```
 
 - [ ] **Step 4: Commit**
@@ -406,42 +423,46 @@ git commit -m "feat: add message_delay to AIAgent type and hook"
 ## Task 5: Update Agents UI — message_delay Field
 
 **Files:**
+
 - Modify: `src/pages/Agents.tsx`
 
 - [ ] **Step 1: Add message_delay to formData initial state**
 
 Find the `formData` useState (around line 92–101):
+
 ```typescript
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    system_prompt: '',
-    api_key_id: '',
-    model_id: 'google/gemini-2.0-flash-lite:free',
-    memory_limit: 20,
-    is_active: true,
-    is_default: false,
-  })
+const [formData, setFormData] = useState({
+  name: '',
+  description: '',
+  system_prompt: '',
+  api_key_id: '',
+  model_id: 'google/gemini-2.0-flash-lite:free',
+  memory_limit: 20,
+  is_active: true,
+  is_default: false,
+})
 ```
 
 Replace with:
+
 ```typescript
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    system_prompt: '',
-    api_key_id: '',
-    model_id: 'google/gemini-2.0-flash-lite:free',
-    memory_limit: 20,
-    message_delay: 0,
-    is_active: true,
-    is_default: false,
-  })
+const [formData, setFormData] = useState({
+  name: '',
+  description: '',
+  system_prompt: '',
+  api_key_id: '',
+  model_id: 'google/gemini-2.0-flash-lite:free',
+  memory_limit: 20,
+  message_delay: 0,
+  is_active: true,
+  is_default: false,
+})
 ```
 
 - [ ] **Step 2: Populate message_delay when editing an existing agent**
 
 Find the `handleOpenDialog` branch for editing (around line 110–121):
+
 ```typescript
     if (agent) {
       setEditingAgent(agent)
@@ -458,6 +479,7 @@ Find the `handleOpenDialog` branch for editing (around line 110–121):
 ```
 
 Replace with:
+
 ```typescript
     if (agent) {
       setEditingAgent(agent)
@@ -477,6 +499,7 @@ Replace with:
 - [ ] **Step 3: Also populate message_delay for new agent dialog**
 
 Find the `else` branch in `handleOpenDialog` (creating a new agent, around line 122–133):
+
 ```typescript
     } else {
       setEditingAgent(null)
@@ -493,6 +516,7 @@ Find the `else` branch in `handleOpenDialog` (creating a new agent, around line 
 ```
 
 Replace with:
+
 ```typescript
     } else {
       setEditingAgent(null)
@@ -512,6 +536,7 @@ Replace with:
 - [ ] **Step 4: Add the message_delay input field in the dialog UI**
 
 Find the `memory_limit` field block in the dialog (around line 532–551):
+
 ```typescript
               <div className="space-y-3">
                 <Label htmlFor="memory_limit" className="font-semibold flex items-center justify-between">
@@ -536,6 +561,7 @@ Find the `memory_limit` field block in the dialog (around line 532–551):
 ```
 
 Replace with:
+
 ```typescript
               <div className="space-y-3">
                 <Label htmlFor="memory_limit" className="font-semibold flex items-center justify-between">
@@ -609,6 +635,7 @@ Open the app → Agents → edit your test agent → set "Delay entre mensagens"
 Send quickly: "Oi" → "Tudo bem?" → "Preciso de ajuda". Wait at least 5 seconds.
 
 Expected in Supabase Edge Function logs:
+
 - 3 `[WEBHOOK] Triggering background AI task` entries with triggerVersions 1, 2, 3
 - 2 `[AI Handler] Debounce: newer message arrived during delay, aborting` entries (for versions 1 and 2)
 - 1 AI response sent (for version 3)

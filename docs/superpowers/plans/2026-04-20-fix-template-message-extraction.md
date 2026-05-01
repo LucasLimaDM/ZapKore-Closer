@@ -12,10 +12,10 @@
 
 ## Files to Modify
 
-| File | Change |
-|---|---|
+| File                                                  | Change                                                         |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
 | `supabase/functions/evolution-sync-messages/index.ts` | Add templateMessage fallback in text extractor (line ~305-308) |
-| `supabase/functions/evolution-webhook/index.ts` | Add templateMessage fallback in text extractor (line ~124-131) |
+| `supabase/functions/evolution-webhook/index.ts`       | Add templateMessage fallback in text extractor (line ~124-131) |
 
 No new files. No migrations. No DB schema changes.
 
@@ -24,17 +24,18 @@ No new files. No migrations. No DB schema changes.
 ### Task 1: Fix text extraction in evolution-sync-messages
 
 **Files:**
+
 - Modify: `supabase/functions/evolution-sync-messages/index.ts:305-308`
 
 **Context — current code (lines 305-308):**
+
 ```ts
 const text =
-  m.message?.conversation ||
-  m.message?.extendedTextMessage?.text ||
-  '[Media/Unsupported]'
+  m.message?.conversation || m.message?.extendedTextMessage?.text || '[Media/Unsupported]'
 ```
 
 `templateMessage` payloads look like:
+
 ```json
 {
   "templateMessage": {
@@ -53,16 +54,16 @@ The body is in `hydratedContentText`; the title is in `hydratedTitleText`. We wa
 File: `supabase/functions/evolution-sync-messages/index.ts`, ~line 305.
 
 Confirm you see:
+
 ```ts
 const text =
-  m.message?.conversation ||
-  m.message?.extendedTextMessage?.text ||
-  '[Media/Unsupported]'
+  m.message?.conversation || m.message?.extendedTextMessage?.text || '[Media/Unsupported]'
 ```
 
 - [ ] **Step 2: Replace the text extractor with the expanded version**
 
 Replace those 3 lines with:
+
 ```ts
 const text =
   m.message?.conversation ||
@@ -93,9 +94,11 @@ git commit -m "fix(sync-messages): extract text from templateMessage payloads"
 ### Task 2: Fix text extraction in evolution-webhook
 
 **Files:**
+
 - Modify: `supabase/functions/evolution-webhook/index.ts:124-131`
 
 **Context — current code (lines 124-131):**
+
 ```ts
 text =
   content.conversation ||
@@ -116,6 +119,7 @@ Confirm you see the block above inside the `else if (content && typeof content =
 - [ ] **Step 2: Replace the text extractor with the expanded version**
 
 Replace those 8 lines with:
+
 ```ts
 text =
   content.conversation ||

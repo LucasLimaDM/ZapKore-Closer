@@ -28,6 +28,7 @@ Audio messages (`audioMessage`, `pttMessage`) received via the Evolution API web
 (JWT-authenticated via the standard Supabase auth header)
 
 **Flow:**
+
 1. Validate caller JWT → resolve `user_id`
 2. Fetch `whatsapp_messages` row where `message_id = messageId` and `contact_id = contactId`, assert `user_id` matches → prevents cross-user access
 3. Fetch `user_integrations` for `user_id` → get `instance_name`, `evolution_api_url`, `evolution_api_key`
@@ -36,6 +37,7 @@ Audio messages (`audioMessage`, `pttMessage`) received via the Evolution API web
 6. Decode base64 → `Uint8Array`, return as `Response` with correct `Content-Type` header (e.g. `audio/ogg; codecs=opus`, `audio/mp4`, `audio/mpeg`)
 
 **Error cases:**
+
 - Message not found or wrong owner → 404
 - Evolution API failure → 502 with JSON error body
 - Missing integration → 404
@@ -51,12 +53,14 @@ Audio messages (`audioMessage`, `pttMessage`) received via the Evolution API web
 **Purpose:** When a chat opens, immediately start fetching all audio blobs for the loaded messages in parallel. Tracks status per message.
 
 **Signature:**
+
 ```ts
 type AudioEntry = { status: 'loading' | 'ready' | 'error'; blobUrl: string | null }
 function useAudioPreloader(messages: WhatsAppMessage[]): Map<string, AudioEntry>
 ```
 
 **Behavior:**
+
 - Filters messages where `type === 'audioMessage' || type === 'pttMessage'`
 - For each audio message not yet in the map: fires `supabase.functions.invoke('evolution-get-media', { body: { messageId: msg.message_id, contactId: msg.contact_id } })`
 - On success: the `supabase.functions.invoke` call must be made via raw `fetch` (not the SDK helper) to get a binary `Response` — the SDK returns parsed JSON by default. Use `fetch` with the Supabase anon key + auth header, then `response.blob()` → `URL.createObjectURL(blob)`, sets status `'ready'`
@@ -74,6 +78,7 @@ function useAudioPreloader(messages: WhatsAppMessage[]): Map<string, AudioEntry>
 **File:** `src/components/chat/AudioPlayer.tsx`
 
 **Props:**
+
 ```ts
 interface AudioPlayerProps {
   blobUrl: string | null
@@ -83,27 +88,30 @@ interface AudioPlayerProps {
 ```
 
 **Layout:**
+
 ```
 [ ▶/⏸ ]  [————progress————]  0:12 / 0:47  [ 1.5x ]
 ```
 
 **States:**
+
 - `isLoading = true` → play button shows `Loader2` spinner; range input disabled
 - `blobUrl = null && !isLoading` → play button shows error icon; label "Áudio indisponível"
 - `ready` → fully interactive
 
 **Controls:**
 
-| Control | Implementation |
-|---|---|
-| Play / Pause | `useRef<HTMLAudioElement>` + `audio.play()` / `audio.pause()` |
+| Control      | Implementation                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Play / Pause | `useRef<HTMLAudioElement>` + `audio.play()` / `audio.pause()`                                                                   |
 | Progress bar | `<input type="range" min=0 max=duration step=0.1>` synced with `timeupdate` event; `onChange` calls `audio.currentTime = value` |
-| Time display | `currentTime` / `duration` formatted as `m:ss` |
-| Speed button | Cycles `1 → 1.25 → 1.5 → 2 → 1`; applies via `audio.playbackRate` |
+| Time display | `currentTime` / `duration` formatted as `m:ss`                                                                                  |
+| Speed button | Cycles `1 → 1.25 → 1.5 → 2 → 1`; applies via `audio.playbackRate`                                                               |
 
 **Hidden `<audio>` element:** `ref={audioRef}`, `src={blobUrl}`, `onEnded` resets play state.
 
 **Styling:**
+
 - Width: matches text bubble max-width (`max-w-[85%] sm:max-w-[70%]`)
 - `fromMe = true` → `bg-primary text-primary-foreground`; range track tinted white/50
 - `fromMe = false` → `bg-card border border-border/60 text-foreground`; range track tinted primary/40
@@ -114,23 +122,27 @@ interface AudioPlayerProps {
 ### 4. Integration in `Chat.tsx`
 
 **Hook usage** (near top of component, after `messages` state):
+
 ```tsx
 const audioMap = useAudioPreloader(messages)
 ```
 
 **Message render bifurcation** (replaces line 459):
+
 ```tsx
 const isAudio = msg.type === 'audioMessage' || msg.type === 'pttMessage'
 
-{isAudio ? (
-  <AudioPlayer
-    blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
-    isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
-    fromMe={msg.from_me}
-  />
-) : (
-  <span className="whitespace-pre-wrap break-words">{msg.text}</span>
-)}
+{
+  isAudio ? (
+    <AudioPlayer
+      blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
+      isLoading={(audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'}
+      fromMe={msg.from_me}
+    />
+  ) : (
+    <span className="whitespace-pre-wrap break-words">{msg.text}</span>
+  )
+}
 ```
 
 The `text` field value (`'[Media/Unsupported]'`) is intentionally ignored for audio messages — no DB schema change required.
@@ -153,12 +165,12 @@ WhatsApp user sends voice note
 
 ## Error Handling
 
-| Scenario | Behavior |
-|---|---|
-| Evolution API returns error on download | `status = 'error'`, player shows "Áudio indisponível" |
-| Network timeout | Same as above |
+| Scenario                                     | Behavior                                                             |
+| -------------------------------------------- | -------------------------------------------------------------------- |
+| Evolution API returns error on download      | `status = 'error'`, player shows "Áudio indisponível"                |
+| Network timeout                              | Same as above                                                        |
 | User navigates away before preload completes | `useEffect` cleanup cancels pending state updates; blob URLs revoked |
-| Audio codec unsupported by browser | Browser's native error event → player shows error state |
+| Audio codec unsupported by browser           | Browser's native error event → player shows error state              |
 
 ---
 

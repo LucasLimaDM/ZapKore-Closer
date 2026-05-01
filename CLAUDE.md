@@ -23,27 +23,34 @@ To deploy an edge function:
 # b) Regenerate TypeScript types:
 supabase gen types typescript --project-id fckenwdyghisdebqauxy > src/lib/supabase/types.ts
 ```
+
 **Every schema change without a migration is technical debt that breaks AI and other features on the next FK-touching deploy. Always write the migration first.**
 
 ### 2. Edge function changes
+
 Deploy EVERY modified function:
+
 ```bash
 supabase functions deploy <function-name> --no-verify-jwt
 ```
+
 **Always use `--no-verify-jwt`** — omitting resets `verify_jwt` to `true`, causing 401 before function runs.
 
 Functions that touch `ai_agents` or `user_api_keys` → run AI smoke test after deploy (step 3).
 
 ### 3. AI agent smoke test (after any change touching evolution-webhook, ai-handler, ai_agents, user_api_keys)
+
 ```bash
 curl "https://fckenwdyghisdebqauxy.supabase.co/functions/v1/evolution-debug?endpoint=test-ai" \
   -H "Authorization: Bearer <service_role_key>"
 ```
+
 Expected: `"ok": true` and all checks `true`. If `fk_join_ok` is missing or `api_key_present: false`, the AI handler will silently exit — **AI appears broken with no visible error in the webhook response**.
 
 AI failures are SILENT: `evolution-webhook` always returns `200 OK`. Errors only appear in Supabase function logs. Check logs at: https://supabase.com/dashboard/project/fckenwdyghisdebqauxy/functions
 
 ### 4. Commit and push
+
 ```bash
 git add -A && git commit -m "..."
 git push
@@ -52,12 +59,14 @@ git push
 ## FK Joins on ai_agents — Critical Pattern
 
 `ai_agents` has TWO foreign keys to `user_api_keys`:
+
 - `api_key_id` → FK name: `ai_agents_api_key_id_fkey` (AI/OpenRouter key)
 - `audio_api_key_id` → FK name: `ai_agents_audio_api_key_id_fkey` (AssemblyAI key)
 
 **Never use** `.select('*, user_api_keys(*)')` — ambiguous FK, PostgREST error → `agentError` set → AI silently stops.
 
 **Always use explicit FK hint:**
+
 ```typescript
 .select('*, user_api_keys!ai_agents_api_key_id_fkey(*)')   // AI key
 .select('*, user_api_keys!ai_agents_audio_api_key_id_fkey(*)')  // audio key
@@ -133,6 +142,7 @@ All edge functions use `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS), `verify_jwt =
 **Dois JIDs para o mesmo contato (causa raiz de duplicatas)**
 
 WhatsApp representa mesmo contato de duas formas:
+
 - `<phone>@s.whatsapp.net` — JID canônico com número
 - `<lid>@lid` — JID opaco para contas business/API (sem telefone)
 
@@ -160,6 +170,7 @@ Ambas criam contatos. `sync-messages` carrega `contact_identity` em `identityMap
 **Resolução de LID no webhook**
 
 `evolution-webhook` resolve LIDs na ordem:
+
 1. `extractCanonicalPhone` nos campos do payload (incluindo `remoteJidAlt`)
 2. `resolveLidToPhone` via Evolution API
 3. Busca em `contact_identity` por `lid_jid` ou `phone_jid`
@@ -169,6 +180,7 @@ Ambas criam contatos. `sync-messages` carrega `contact_identity` em `identityMap
 **Campos inconsistentes da Evolution API**
 
 Payload de `messages.upsert` tem estruturas diferentes. Webhook normaliza:
+
 ```
 payload.data → array ou objeto → msgObj
 msgObj.key.remoteJid | msgObj.remoteJid | msgObj.jid
@@ -176,6 +188,7 @@ msgObj.pushName | msgObj.verifiedName | msgObj.name
 msgObj.messageTimestamp | msgObj.timestamp
 msgObj.message.conversation | .extendedTextMessage.text | .templateMessage...
 ```
+
 `findChats` retorna `remoteJid | jid | id` e `pushName | name | verifiedName | contactName | profileName | displayName`. Evolution às vezes retorna próprio número/LID como `pushName` — sempre filtrar com `!/^\d+$/.test(pushName)`.
 
 **`merge_whatsapp_contacts` RPC**

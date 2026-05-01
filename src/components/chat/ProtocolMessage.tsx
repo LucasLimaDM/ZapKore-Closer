@@ -26,8 +26,7 @@ export function ProtocolMessage({ raw }: ProtocolMessageProps) {
 
   if (pType === PROTOCOL_EDIT) {
     const editedText =
-      protocol?.editedMessage?.conversation ||
-      protocol?.editedMessage?.extendedTextMessage?.text
+      protocol?.editedMessage?.conversation || protocol?.editedMessage?.extendedTextMessage?.text
 
     if (editedText) {
       return (

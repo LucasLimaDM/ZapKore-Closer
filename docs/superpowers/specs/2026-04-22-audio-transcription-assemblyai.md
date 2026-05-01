@@ -36,15 +36,15 @@ Add `transcript TEXT` column. Null when not yet transcribed or not applicable. P
 3. `processAudioMessage`:
    a. Fetch agent row — check `audio_api_key_id`
    b. If key exists:
-      - Download audio blob via existing `evolution-get-media` logic
-      - Upload blob to `https://api.assemblyai.com/v2/upload`
-      - Submit transcript job: `POST /v2/transcript` with `{ audio_url, language_detection: true, speech_models: ['universal-3-pro', 'universal-2'] }`
-      - Poll `GET /v2/transcript/:id` every 3s until `completed` or `error`
-      - On `completed`: `UPDATE whatsapp_messages SET transcript = result.text WHERE id = ...`
-      - Use `transcript` as text input for `processAiResponse`
-   c. If no key:
-      - Inject synthetic text: `"[Áudio recebido. Você ainda não consegue transcrever áudios - informe o cliente.]"`
-      - Use this synthetic text as input for `processAiResponse`
+   - Download audio blob via existing `evolution-get-media` logic
+   - Upload blob to `https://api.assemblyai.com/v2/upload`
+   - Submit transcript job: `POST /v2/transcript` with `{ audio_url, language_detection: true, speech_models: ['universal-3-pro', 'universal-2'] }`
+   - Poll `GET /v2/transcript/:id` every 3s until `completed` or `error`
+   - On `completed`: `UPDATE whatsapp_messages SET transcript = result.text WHERE id = ...`
+   - Use `transcript` as text input for `processAiResponse`
+     c. If no key:
+   - Inject synthetic text: `"[Áudio recebido. Você ainda não consegue transcrever áudios - informe o cliente.]"`
+   - Use this synthetic text as input for `processAiResponse`
 4. `processAiResponse` receives the text string (real or synthetic) — existing memory/delay logic unchanged
 
 ### Idempotency
@@ -65,11 +65,12 @@ Split into two visual sub-sections:
 
 **"Modelos de IA"** — existing cards, existing "Nova Conexão" button (creates `key_type = 'ai'`)
 
-**"Áudio & Transcrição"** — new section with separator, new "Nova Chave de Áudio" button  
-- Dialog mirrors the existing connection dialog  
-- Provider fixed to AssemblyAI (`provider = 'assemblyai'`, `key_type = 'audio'`)  
-- No provider selector — single option  
-- Link to `https://www.assemblyai.com/app/account` for key retrieval  
+**"Áudio & Transcrição"** — new section with separator, new "Nova Chave de Áudio" button
+
+- Dialog mirrors the existing connection dialog
+- Provider fixed to AssemblyAI (`provider = 'assemblyai'`, `key_type = 'audio'`)
+- No provider selector — single option
+- Link to `https://www.assemblyai.com/app/account` for key retrieval
 - Cards show microphone icon instead of key icon
 
 ### Agent create/edit dialog

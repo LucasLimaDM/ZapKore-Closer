@@ -46,7 +46,9 @@ Deno.serve(async (req: Request) => {
         const modelId = agent?.model_id || 'google/gemini-2.0-flash-lite:free'
 
         if (!apiKey) {
-          console.warn(`[AI Pipeline Monitor] No API key found for user ${contact.user_id}. Skipping.`)
+          console.warn(
+            `[AI Pipeline Monitor] No API key found for user ${contact.user_id}. Skipping.`,
+          )
           continue
         }
 
@@ -61,20 +63,18 @@ Deno.serve(async (req: Request) => {
         let reasoning = 'No messages found.'
 
         if (messages && messages.length > 0) {
-          const history = messages
-            .reverse()
-            .map((m: any) => ({
-              role: m.from_me ? 'assistant' : 'user',
-              content: m.text || ''
-            }))
+          const history = messages.reverse().map((m: any) => ({
+            role: m.from_me ? 'assistant' : 'user',
+            content: m.text || '',
+          }))
 
           const openai = new OpenAI({
             apiKey: apiKey,
-            baseURL: "https://openrouter.ai/api/v1",
+            baseURL: 'https://openrouter.ai/api/v1',
             defaultHeaders: {
-              "HTTP-Referer": "https://zapkore-closer.com",
-              "X-Title": "ZapKore Closer - Pipeline Monitor",
-            }
+              'HTTP-Referer': 'https://zapkore-closer.com',
+              'X-Title': 'ZapKore Closer - Pipeline Monitor',
+            },
           })
 
           const completion = await openai.chat.completions.create({
@@ -82,9 +82,9 @@ Deno.serve(async (req: Request) => {
             messages: [
               {
                 role: 'system',
-                content: `You are an AI assistant managing a CRM pipeline for WhatsApp conversations. Analyze the history and decide if the conversation was RESOLVED or LOST/ABANDONED. Return JSON with 'stage' ("Resolvido" | "Perdido") and 'reasoning' (brief string).`
+                content: `You are an AI assistant managing a CRM pipeline for WhatsApp conversations. Analyze the history and decide if the conversation was RESOLVED or LOST/ABANDONED. Return JSON with 'stage' ("Resolvido" | "Perdido") and 'reasoning' (brief string).`,
               },
-              ...history as any
+              ...(history as any),
             ],
             response_format: { type: 'json_object' },
             temperature: 0.2,
@@ -126,4 +126,3 @@ Deno.serve(async (req: Request) => {
     })
   }
 })
-

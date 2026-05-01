@@ -82,7 +82,11 @@ Deno.serve(async (req: Request) => {
       })
       const getData = await getRes.json()
       return new Response(
-        JSON.stringify({ _meta: { endpoint, instance, status: getRes.status }, data: getData }, null, 2),
+        JSON.stringify(
+          { _meta: { endpoint, instance, status: getRes.status }, data: getData },
+          null,
+          2,
+        ),
         { headers: { 'Content-Type': 'application/json' } },
       )
     } else if (endpoint === 'test-ai') {
@@ -90,9 +94,13 @@ Deno.serve(async (req: Request) => {
       // Checks: agent loads, FK join resolves, API key present, Evolution credentials set.
       const userId = integ?.user_id
       if (!userId) {
-        return new Response(JSON.stringify({ ok: false, error: 'No real user integration found' }), {
-          status: 200, headers: { 'Content-Type': 'application/json' },
-        })
+        return new Response(
+          JSON.stringify({ ok: false, error: 'No real user integration found' }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
       }
 
       const { data: contacts, error: contactsErr } = await supabase
@@ -103,9 +111,17 @@ Deno.serve(async (req: Request) => {
         .limit(1)
 
       if (contactsErr || !contacts?.length) {
-        return new Response(JSON.stringify({ ok: false, step: 'contact_lookup', error: contactsErr?.message || 'No contacts with ai_agent_id assigned' }), {
-          status: 200, headers: { 'Content-Type': 'application/json' },
-        })
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            step: 'contact_lookup',
+            error: contactsErr?.message || 'No contacts with ai_agent_id assigned',
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
       }
 
       const contact = contacts[0]
@@ -117,31 +133,51 @@ Deno.serve(async (req: Request) => {
         .single()
 
       if (agentErr || !agent) {
-        return new Response(JSON.stringify({ ok: false, step: 'agent_load', error: agentErr?.message || 'Agent not found or inactive' }), {
-          status: 200, headers: { 'Content-Type': 'application/json' },
-        })
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            step: 'agent_load',
+            error: agentErr?.message || 'Agent not found or inactive',
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
       }
 
-      const apiKey = agent.user_api_keys?.key || agent.gemini_api_key || Deno.env.get('GEMINI_API_KEY')
+      const apiKey =
+        agent.user_api_keys?.key || agent.gemini_api_key || Deno.env.get('GEMINI_API_KEY')
       const evoUrlOk = !!(integ?.evolution_api_url || Deno.env.get('EVOLUTION_API_URL'))
       const evoKeyOk = !!(integ?.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY'))
 
-      return new Response(JSON.stringify({
-        ok: !!(apiKey && evoUrlOk && evoKeyOk),
-        checks: {
-          contact_found: true,
-          contact_jid: contact.remote_jid,
-          agent_loaded: true,
-          agent_id: agent.id,
-          agent_model: agent.model_id,
-          agent_active: agent.is_active,
-          fk_join_ok: true,
-          api_key_present: !!apiKey,
-          api_key_source: agent.user_api_keys?.key ? 'linked_key' : (agent.gemini_api_key ? 'gemini_api_key_column' : 'env'),
-          evolution_url_ok: evoUrlOk,
-          evolution_key_ok: evoKeyOk,
-        },
-      }, null, 2), { headers: { 'Content-Type': 'application/json' } })
+      return new Response(
+        JSON.stringify(
+          {
+            ok: !!(apiKey && evoUrlOk && evoKeyOk),
+            checks: {
+              contact_found: true,
+              contact_jid: contact.remote_jid,
+              agent_loaded: true,
+              agent_id: agent.id,
+              agent_model: agent.model_id,
+              agent_active: agent.is_active,
+              fk_join_ok: true,
+              api_key_present: !!apiKey,
+              api_key_source: agent.user_api_keys?.key
+                ? 'linked_key'
+                : agent.gemini_api_key
+                  ? 'gemini_api_key_column'
+                  : 'env',
+              evolution_url_ok: evoUrlOk,
+              evolution_key_ok: evoKeyOk,
+            },
+          },
+          null,
+          2,
+        ),
+        { headers: { 'Content-Type': 'application/json' } },
+      )
     }
 
     const res = await fetch(apiUrl, {

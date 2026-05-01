@@ -82,7 +82,13 @@ Deno.serve(async (req: Request) => {
                 webhook: {
                   enabled: true,
                   url: webhookUrl,
-                  events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'MESSAGES_DELETE', 'CONNECTION_UPDATE', 'CONTACTS_UPSERT'],
+                  events: [
+                    'MESSAGES_UPSERT',
+                    'MESSAGES_UPDATE',
+                    'MESSAGES_DELETE',
+                    'CONNECTION_UPDATE',
+                    'CONTACTS_UPSERT',
+                  ],
                 },
               }),
             })
@@ -124,7 +130,13 @@ Deno.serve(async (req: Request) => {
         webhook: {
           enabled: true,
           url: webhookUrl,
-          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'MESSAGES_DELETE', 'CONNECTION_UPDATE', 'CONTACTS_UPSERT'],
+          events: [
+            'MESSAGES_UPSERT',
+            'MESSAGES_UPDATE',
+            'MESSAGES_DELETE',
+            'CONNECTION_UPDATE',
+            'CONTACTS_UPSERT',
+          ],
         },
       }),
     })

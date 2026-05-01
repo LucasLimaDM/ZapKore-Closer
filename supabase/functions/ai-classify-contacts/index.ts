@@ -12,7 +12,7 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    
+
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     })
@@ -31,7 +31,10 @@ Deno.serve(async (req: Request) => {
       .maybeSingle()
 
     // Fallback API Key: Agent's key -> System key (legacy var name for now if not set)
-    const apiKey = agent?.user_api_keys?.key || Deno.env.get('GEMINI_API_KEY') || Deno.env.get('OPENROUTER_API_KEY')
+    const apiKey =
+      agent?.user_api_keys?.key ||
+      Deno.env.get('GEMINI_API_KEY') ||
+      Deno.env.get('OPENROUTER_API_KEY')
     const modelId = agent?.model_id || 'google/gemini-2.0-flash-lite:free'
 
     if (!apiKey) {
@@ -227,21 +230,21 @@ Return ONLY a valid JSON object with no additional text:
 
             try {
               console.log(`[AI Classifier] Calling AI with model: ${modelId}`)
-              
+
               const openai = new OpenAI({
                 apiKey: apiKey,
-                baseURL: "https://openrouter.ai/api/v1",
+                baseURL: 'https://openrouter.ai/api/v1',
                 defaultHeaders: {
-                  "HTTP-Referer": "https://zapkore-closer.com",
-                  "X-Title": "ZapKore Closer - Classifier",
-                }
+                  'HTTP-Referer': 'https://zapkore-closer.com',
+                  'X-Title': 'ZapKore Closer - Classifier',
+                },
               })
 
               const completion = await openai.chat.completions.create({
                 model: modelId,
                 messages: [
                   { role: 'system', content: prompt },
-                  { role: 'user', content: `## CONVERSATION TO ANALYZE:\n${conversation}` }
+                  { role: 'user', content: `## CONVERSATION TO ANALYZE:\n${conversation}` },
                 ],
                 response_format: { type: 'json_object' },
                 temperature: 0.2,

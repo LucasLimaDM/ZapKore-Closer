@@ -37,9 +37,7 @@ export function StickerMessage({ msg, entry, request }: StickerMessageProps) {
         />
       )}
 
-      {blobUrl && (
-        <img src={blobUrl} className="absolute inset-0 w-full h-full object-contain" />
-      )}
+      {blobUrl && <img src={blobUrl} className="absolute inset-0 w-full h-full object-contain" />}
 
       {status === 'loading' && !thumbnail && (
         <div className="absolute inset-0 flex items-center justify-center">
