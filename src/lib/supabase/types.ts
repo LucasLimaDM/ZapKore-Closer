@@ -195,6 +195,7 @@ export type Database = {
       }
       user_integrations: {
         Row: {
+          captions_enabled: boolean
           created_at: string | null
           evolution_api_key: string | null
           evolution_api_url: string | null
@@ -204,9 +205,11 @@ export type Database = {
           is_webhook_enabled: boolean
           status: string | null
           updated_at: string | null
+          user_display_name: string | null
           user_id: string
         }
         Insert: {
+          captions_enabled?: boolean
           created_at?: string | null
           evolution_api_key?: string | null
           evolution_api_url?: string | null
@@ -216,9 +219,11 @@ export type Database = {
           is_webhook_enabled?: boolean
           status?: string | null
           updated_at?: string | null
+          user_display_name?: string | null
           user_id: string
         }
         Update: {
+          captions_enabled?: boolean
           created_at?: string | null
           evolution_api_key?: string | null
           evolution_api_url?: string | null
@@ -228,6 +233,7 @@ export type Database = {
           is_webhook_enabled?: boolean
           status?: string | null
           updated_at?: string | null
+          user_display_name?: string | null
           user_id?: string
         }
         Relationships: []
