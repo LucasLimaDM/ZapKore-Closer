@@ -264,7 +264,7 @@ Deno.serve(async (req: Request) => {
 
       let { data: contact } = await supabase
         .from('whatsapp_contacts')
-        .select('id, phone_number, push_name')
+        .select('id, phone_number, push_name, pipeline_stage')
         .eq('user_id', userId)
         .eq('remote_jid', effectiveJid)
         .maybeSingle()
@@ -272,7 +272,7 @@ Deno.serve(async (req: Request) => {
       if (!contact && effectivePhone) {
         const { data: contactByPhone } = await supabase
           .from('whatsapp_contacts')
-          .select('id, phone_number, push_name')
+          .select('id, phone_number, push_name, pipeline_stage')
           .eq('user_id', userId)
           .eq('phone_number', effectivePhone)
           .limit(1)
@@ -283,7 +283,7 @@ Deno.serve(async (req: Request) => {
       if (!contact && remoteJid !== effectiveJid) {
         const { data: contactByJid } = await supabase
           .from('whatsapp_contacts')
-          .select('id, phone_number, push_name')
+          .select('id, phone_number, push_name, pipeline_stage')
           .eq('user_id', userId)
           .eq('remote_jid', remoteJid)
           .limit(1)
@@ -318,7 +318,10 @@ Deno.serve(async (req: Request) => {
           .single()
         contact = newContact
       } else {
-        const updatePayload: any = { last_message_at: timestamp, pipeline_stage: 'Em Conversa' }
+        const updatePayload: any = { last_message_at: timestamp }
+        if ((contact as any).pipeline_stage !== 'Contato Humano') {
+          updatePayload.pipeline_stage = 'Em Conversa'
+        }
         if (
           !fromMe &&
           pushName &&
@@ -384,6 +387,22 @@ Deno.serve(async (req: Request) => {
             `[WEBHOOK] Successfully saved message ${messageId} for contact ${contact.id} (remoteJid: ${effectiveJid})`,
           )
 
+          // Rate limiting: increment msg counter for all inbound messages
+          if (!fromMe && contact?.id) {
+            const msgCountPromise = supabase
+              .rpc('increment_contact_msg', { p_contact_id: contact.id, p_window_secs: 3600 })
+              .then(() => {})
+              .catch((err: any) =>
+                console.error(`[WEBHOOK] increment_contact_msg failed for contact ${contact.id}:`, err),
+              )
+            if (
+              typeof (globalThis as any).EdgeRuntime !== 'undefined' &&
+              typeof (globalThis as any).EdgeRuntime.waitUntil === 'function'
+            ) {
+              ;(globalThis as any).EdgeRuntime.waitUntil(msgCountPromise)
+            }
+          }
+
           // If the inbound message reveals the phone number for an @lid contact,
           // link them via the shared helper so future messages and the UI converge.
           if (!fromMe && remoteJid?.includes('@lid') && remoteJidAlt?.includes('@s.whatsapp.net')) {
@@ -425,6 +444,7 @@ Deno.serve(async (req: Request) => {
               console.log(
                 `[WEBHOOK] Triggering background audio+AI task for contact ${contact.id} (type: ${type}, triggerVersion: ${myVersion})`,
               )
+              const lidJidHint = effectiveJid.includes('@lid') ? effectiveJid : undefined
               const audioTask = processAudioMessage(
                 userId,
                 contact.id,
@@ -435,6 +455,7 @@ Deno.serve(async (req: Request) => {
                 evoUrl,
                 evoKey || '',
                 instanceName,
+                lidJidHint,
               )
               if (
                 typeof (globalThis as any).EdgeRuntime !== 'undefined' &&
@@ -462,15 +483,16 @@ Deno.serve(async (req: Request) => {
               console.log(
                 `[WEBHOOK] Triggering background AI task for contact ${contact.id} (remoteJid: ${effectiveJid}, triggerVersion: ${myVersion})`,
               )
+              const lidJidHint = effectiveJid.includes('@lid') ? effectiveJid : undefined
               if (
                 typeof (globalThis as any).EdgeRuntime !== 'undefined' &&
                 typeof (globalThis as any).EdgeRuntime.waitUntil === 'function'
               ) {
                 ;(globalThis as any).EdgeRuntime.waitUntil(
-                  processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion),
+                  processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion, lidJidHint),
                 )
               } else {
-                processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion).catch((err: any) =>
+                processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion, lidJidHint).catch((err: any) =>
                   console.error('[WEBHOOK] Background AI task failed:', err),
                 )
               }
