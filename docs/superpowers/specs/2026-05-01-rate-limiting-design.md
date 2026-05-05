@@ -10,10 +10,10 @@
 
 Two independent limits, both configurable per operator in Settings:
 
-| Limit | Default | Window | Scope |
-|---|---|---|---|
-| Messages/hour | 200 | Rolling 60 min | All inbound messages (AI active or not) |
-| Tokens/day | 2,000,000 | Rolling 24h | `prompt_tokens + completion_tokens` per OpenRouter call |
+| Limit         | Default   | Window         | Scope                                                   |
+| ------------- | --------- | -------------- | ------------------------------------------------------- |
+| Messages/hour | 200       | Rolling 60 min | All inbound messages (AI active or not)                 |
+| Tokens/day    | 2,000,000 | Rolling 24h    | `prompt_tokens + completion_tokens` per OpenRouter call |
 
 Settings live on `user_integrations` (global per operator, not per agent).  
 Counters live on `whatsapp_contacts` (per contact).  
@@ -112,7 +112,7 @@ After upserting `whatsapp_contacts` for every inbound message:
 
 ```typescript
 EdgeRuntime.waitUntil(
-  supabase.rpc('increment_contact_msg', { p_contact_id: contactId, p_window_secs: 3600 })
+  supabase.rpc('increment_contact_msg', { p_contact_id: contactId, p_window_secs: 3600 }),
 )
 ```
 
@@ -128,17 +128,23 @@ New steps inserted into existing flow:
 // Targeted fetch: only rate limit fields to avoid moving the full integration load
 const { data: rlSettings } = await supabase
   .from('user_integrations')
-  .select('rate_limit_enabled, rate_limit_msg_per_hour, rate_limit_tokens_per_day, rate_limit_message')
+  .select(
+    'rate_limit_enabled, rate_limit_msg_per_hour, rate_limit_tokens_per_day, rate_limit_message',
+  )
   .eq('user_id', userId)
   .single()
 
-if (rlSettings?.rate_limit_enabled && contact.msg_count_hour >= (rlSettings.rate_limit_msg_per_hour ?? 200)) {
+if (
+  rlSettings?.rate_limit_enabled &&
+  contact.msg_count_hour >= (rlSettings.rate_limit_msg_per_hour ?? 200)
+) {
   // Send rate limit message via Evolution, set handoff, exit
   // (Evolution credentials loaded here or deferred — see implementation note below)
 }
 ```
 
 **Implementation note on Evolution credentials for rate limit message:** The integration (with `evolution_api_url`, `evolution_api_key`, `instance_name`) is currently loaded later in the handler. For the rate limit early-exit path, we need credentials to send the message. Two options:
+
 - Option 1 (recommended): Load full integration row once, early (move existing integration fetch to top of handler, before agent load). Simplifies flow.
 - Option 2: Load only rate limit fields early; if limit hit, load full integration row just for sending.
 
@@ -147,15 +153,22 @@ Recommendation: move the full `user_integrations` fetch to the top (after contac
 **Step B — after LLM call, after getting `completion.usage`:**
 
 ```typescript
-const totalTokens = (completion.usage?.prompt_tokens ?? 0) + (completion.usage?.completion_tokens ?? 0)
+const totalTokens =
+  (completion.usage?.prompt_tokens ?? 0) + (completion.usage?.completion_tokens ?? 0)
 
-const { data: newTokenTotal } = await supabase
-  .rpc('add_contact_tokens', { p_contact_id: contactId, p_tokens: totalTokens, p_window_secs: 86400 })
+const { data: newTokenTotal } = await supabase.rpc('add_contact_tokens', {
+  p_contact_id: contactId,
+  p_tokens: totalTokens,
+  p_window_secs: 86400,
+})
 
-const tokenLimitHit = rlSettings?.rate_limit_enabled && (newTokenTotal ?? 0) >= (rlSettings.rate_limit_tokens_per_day ?? 2000000)
+const tokenLimitHit =
+  rlSettings?.rate_limit_enabled &&
+  (newTokenTotal ?? 0) >= (rlSettings.rate_limit_tokens_per_day ?? 2000000)
 ```
 
 If `tokenLimitHit`:
+
 1. Continue with normal flow — send `cleanText` (contact gets their answer)
 2. After normal send succeeds, send `rlSettings.rate_limit_message` as a second message
 3. Set `pipeline_stage = 'Contato Humano'`
@@ -176,12 +189,12 @@ New card **"Proteção contra Spam"** in `src/pages/Settings.tsx` (or `Dashboard
 
 Fields:
 
-| Label | Component | Field | Default |
-|---|---|---|---|
-| Proteção ativa | Switch | `rate_limit_enabled` | ON |
-| Mensagens por hora | NumberInput (min 1, max 10000) | `rate_limit_msg_per_hour` | 200 |
-| Tokens por dia | NumberInput (min 1000, max 10000000) | `rate_limit_tokens_per_day` | 2000000 |
-| Mensagem de limite | Textarea | `rate_limit_message` | texto pré-escrito |
+| Label              | Component                            | Field                       | Default           |
+| ------------------ | ------------------------------------ | --------------------------- | ----------------- |
+| Proteção ativa     | Switch                               | `rate_limit_enabled`        | ON                |
+| Mensagens por hora | NumberInput (min 1, max 10000)       | `rate_limit_msg_per_hour`   | 200               |
+| Tokens por dia     | NumberInput (min 1000, max 10000000) | `rate_limit_tokens_per_day` | 2000000           |
+| Mensagem de limite | Textarea                             | `rate_limit_message`        | texto pré-escrito |
 
 Save via existing `updateIntegration` hook. Show tokens field as formatted number (e.g., `2.000.000`).
 
@@ -206,15 +219,15 @@ rate_limit_message: string
 
 ## Files Changed
 
-| File | Action |
-|---|---|
-| `supabase/migrations/20260501000001_add_rate_limiting.sql` | Create — schema + RPCs |
-| `src/lib/supabase/types.ts` | Regenerate |
-| `src/lib/types.ts` | Modify — UserIntegration interface |
-| `supabase/functions/evolution-webhook/index.ts` | Modify — increment_contact_msg call |
-| `supabase/functions/evolution-webhook/ai-handler.ts` | Modify — rate limit checks + token tracking |
-| `src/pages/Settings.tsx` (or Dashboard.tsx) | Modify — new settings card |
-| `src/hooks/use-integration.ts` | Modify — pass new fields in update |
+| File                                                       | Action                                      |
+| ---------------------------------------------------------- | ------------------------------------------- |
+| `supabase/migrations/20260501000001_add_rate_limiting.sql` | Create — schema + RPCs                      |
+| `src/lib/supabase/types.ts`                                | Regenerate                                  |
+| `src/lib/types.ts`                                         | Modify — UserIntegration interface          |
+| `supabase/functions/evolution-webhook/index.ts`            | Modify — increment_contact_msg call         |
+| `supabase/functions/evolution-webhook/ai-handler.ts`       | Modify — rate limit checks + token tracking |
+| `src/pages/Settings.tsx` (or Dashboard.tsx)                | Modify — new settings card                  |
+| `src/hooks/use-integration.ts`                             | Modify — pass new fields in update          |
 
 ---
 

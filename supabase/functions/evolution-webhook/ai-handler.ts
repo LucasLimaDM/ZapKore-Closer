@@ -86,7 +86,7 @@ export async function processAiResponse(
     if (integError || !integration || !integration.instance_name) {
       console.error(
         `[AI Handler] EXIT integration_missing userId=${userId} instance_name=${integration?.instance_name ?? 'NULL'} ` +
-        `supabase_code=${integError?.code ?? 'none'} supabase_message=${integError?.message ?? 'none'}`,
+          `supabase_code=${integError?.code ?? 'none'} supabase_message=${integError?.message ?? 'none'}`,
       )
       return
     }
@@ -128,7 +128,9 @@ export async function processAiResponse(
         headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           number: contact.remote_jid,
-          text: integration.rate_limit_message ?? 'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+          text:
+            integration.rate_limit_message ??
+            'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
         }),
       }).catch((err: any) =>
         console.error(`[AI Handler] rate_limit_msg_send_failed contactId=${contactId}:`, err),
@@ -449,13 +451,17 @@ export async function processAiResponse(
     console.log(`[AI Handler] send_ok http_status=${sendRes.status} elapsed=${elapsed()}`)
 
     if (tokenLimitHit) {
-      console.log(`[AI Handler] token_limit_hit contactId=${contactId} — sending rate limit message and handoffing`)
+      console.log(
+        `[AI Handler] token_limit_hit contactId=${contactId} — sending rate limit message and handoffing`,
+      )
       await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
         method: 'POST',
         headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           number: contact.remote_jid,
-          text: integration.rate_limit_message ?? 'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+          text:
+            integration.rate_limit_message ??
+            'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
         }),
       }).catch((err: any) =>
         console.error(`[AI Handler] token_limit_msg_send_failed contactId=${contactId}:`, err),
@@ -534,7 +540,7 @@ export async function processAiResponse(
     const { error: contactUpdateError } = await supabase
       .from('whatsapp_contacts')
       .update({
-        pipeline_stage: (handoffDetected || tokenLimitHit) ? 'Contato Humano' : 'Em Conversa',
+        pipeline_stage: handoffDetected || tokenLimitHit ? 'Contato Humano' : 'Em Conversa',
         last_message_at: new Date().toISOString(),
       })
       .eq('id', contactId)

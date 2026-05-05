@@ -17,7 +17,16 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { Loader2, MessageCircle, Plug, Unplug, CheckCircle2, KeyRound, Tag, Shield } from 'lucide-react'
+import {
+  Loader2,
+  MessageCircle,
+  Plug,
+  Unplug,
+  CheckCircle2,
+  KeyRound,
+  Tag,
+  Shield,
+} from 'lucide-react'
 
 export default function Settings() {
   const { integration, setIntegration, loading: integrationLoading } = useIntegration()
@@ -114,7 +123,10 @@ export default function Settings() {
     try {
       const { error } = await supabase
         .from('user_integrations')
-        .update({ captions_enabled: captionsEnabled, user_display_name: userDisplayName.trim() || null })
+        .update({
+          captions_enabled: captionsEnabled,
+          user_display_name: userDisplayName.trim() || null,
+        })
         .eq('user_id', integration!.user_id)
       if (error) throw error
       toast.success('Configurações de legendas salvas')
@@ -476,10 +488,7 @@ export default function Settings() {
                   Inclui o nome do remetente no início de cada mensagem enviada
                 </span>
               </div>
-              <Switch
-                checked={captionsEnabled}
-                onCheckedChange={setCaptionsEnabled}
-              />
+              <Switch checked={captionsEnabled} onCheckedChange={setCaptionsEnabled} />
             </div>
 
             {captionsEnabled && (
@@ -495,7 +504,8 @@ export default function Settings() {
                   className="max-w-xs"
                 />
                 <p className="text-xs text-muted-foreground font-medium">
-                  Aparece quando você envia mensagens manualmente. O nome do agente IA é definido nas configurações do agente.
+                  Aparece quando você envia mensagens manualmente. O nome do agente IA é definido
+                  nas configurações do agente.
                 </p>
               </div>
             )}
@@ -535,10 +545,7 @@ export default function Settings() {
                   Ativa os limites de mensagens e tokens por contato.
                 </p>
               </div>
-              <Switch
-                checked={rateLimitEnabled}
-                onCheckedChange={setRateLimitEnabled}
-              />
+              <Switch checked={rateLimitEnabled} onCheckedChange={setRateLimitEnabled} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="rl-msg">Mensagens por hora (por contato)</Label>

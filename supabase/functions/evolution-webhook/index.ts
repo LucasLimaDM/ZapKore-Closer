@@ -389,7 +389,10 @@ Deno.serve(async (req: Request) => {
               .rpc('increment_contact_msg', { p_contact_id: contact.id, p_window_secs: 3600 })
               .then(() => {})
               .catch((err: any) =>
-                console.error(`[WEBHOOK] increment_contact_msg failed for contact ${contact.id}:`, err),
+                console.error(
+                  `[WEBHOOK] increment_contact_msg failed for contact ${contact.id}:`,
+                  err,
+                ),
               )
             if (
               typeof (globalThis as any).EdgeRuntime !== 'undefined' &&
@@ -495,7 +498,14 @@ Deno.serve(async (req: Request) => {
                 typeof (globalThis as any).EdgeRuntime.waitUntil === 'function'
               ) {
                 ;(globalThis as any).EdgeRuntime.waitUntil(
-                  processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion, lidJidHint),
+                  processAiResponse(
+                    userId,
+                    contact.id,
+                    supabaseUrl,
+                    supabaseKey,
+                    myVersion,
+                    lidJidHint,
+                  ),
                 )
               } else {
                 processAiResponse(userId, contact.id, supabaseUrl, supabaseKey, myVersion).catch(
