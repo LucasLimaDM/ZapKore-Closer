@@ -48,6 +48,11 @@ Deno.serve(async (req: Request) => {
 
     if (!contact || !contact.remote_jid) throw new Error('Contact not found')
 
+    const textToSend =
+      integration.captions_enabled && integration.user_display_name
+        ? `*[${integration.user_display_name}]*\n${text}`
+        : text
+
     const response = await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
       method: 'POST',
       headers: {
@@ -56,7 +61,7 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         number: contact.remote_jid,
-        text: text,
+        text: textToSend,
       }),
     })
 

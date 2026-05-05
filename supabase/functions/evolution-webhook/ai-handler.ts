@@ -4,29 +4,61 @@ import { linkLidToPhone } from '../_shared/contact-linking.ts'
 
 export async function processAiResponse(
   userId: string,
-  contactId: string,
+  initialContactId: string,
   supabaseUrl: string,
   supabaseKey: string,
   triggerVersion: number,
+  lidJid?: string,
 ) {
   const t0 = Date.now()
   const elapsed = () => `${Date.now() - t0}ms`
 
+  let contactId = initialContactId
+
   console.log(
-    `[AI Handler] START userId=${userId} contactId=${contactId} triggerVersion=${triggerVersion}`,
+    `[AI Handler] START userId=${userId} contactId=${contactId} triggerVersion=${triggerVersion}${lidJid ? ` lidJid=${lidJid}` : ''}`,
   )
   try {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { data: contact, error: contactError } = await supabase
+    let { data: contact, error: contactError } = await supabase
       .from('whatsapp_contacts')
-      .select('ai_agent_id, remote_jid, pipeline_stage')
+      .select('ai_agent_id, remote_jid, pipeline_stage, msg_count_hour')
       .eq('id', contactId)
       .single()
 
+    // Scenario 1 recovery: LID contact was deleted by a concurrent merge.
+    // Use lidJid to find the surviving phone contact via contact_identity.
+    if ((contactError || !contact) && lidJid?.includes('@lid')) {
+      const { data: identity } = await supabase
+        .from('contact_identity')
+        .select('phone_jid')
+        .eq('user_id', userId)
+        .eq('lid_jid', lidJid)
+        .maybeSingle()
+
+      if (identity?.phone_jid) {
+        const { data: recovered, error: recoveredErr } = await supabase
+          .from('whatsapp_contacts')
+          .select('id, ai_agent_id, remote_jid, pipeline_stage, msg_count_hour')
+          .eq('user_id', userId)
+          .eq('remote_jid', identity.phone_jid)
+          .single()
+
+        if (!recoveredErr && recovered) {
+          contact = recovered
+          contactId = recovered.id
+          contactError = null
+          console.log(
+            `[AI Handler] lid_merge_recovery_contact lidJid=${lidJid} recoveredId=${contactId} remote_jid=${contact.remote_jid}`,
+          )
+        }
+      }
+    }
+
     if (contactError || !contact) {
       console.error(
-        `[AI Handler] EXIT contact_not_found contactId=${contactId} supabase_code=${contactError?.code} supabase_message=${contactError?.message}`,
+        `[AI Handler] EXIT contact_not_found contactId=${initialContactId} supabase_code=${contactError?.code} supabase_message=${contactError?.message}`,
       )
       return
     }
@@ -42,6 +74,69 @@ export async function processAiResponse(
       console.log(
         `[AI Handler] EXIT handoff_active contactId=${contactId} remote_jid=${contact.remote_jid} pipeline_stage=${contact.pipeline_stage}`,
       )
+      return
+    }
+
+    const { data: integration, error: integError } = await supabase
+      .from('user_integrations')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (integError || !integration || !integration.instance_name) {
+      console.error(
+        `[AI Handler] EXIT integration_missing userId=${userId} instance_name=${integration?.instance_name ?? 'NULL'} ` +
+        `supabase_code=${integError?.code ?? 'none'} supabase_message=${integError?.message ?? 'none'}`,
+      )
+      return
+    }
+
+    const evoUrl = (
+      integration.evolution_api_url ||
+      Deno.env.get('EVOLUTION_API_URL') ||
+      ''
+    ).replace(/\/$/, '')
+    const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
+
+    if (!evoUrl) {
+      console.error(
+        `[AI Handler] EXIT evolution_url_missing userId=${userId} — save Evolution API URL in Settings > Credenciais`,
+      )
+      return
+    }
+    if (!evoKey) {
+      console.error(
+        `[AI Handler] EXIT evolution_key_missing userId=${userId} — save Evolution API Key in Settings > Credenciais`,
+      )
+      return
+    }
+
+    console.log(
+      `[AI Handler] evolution_ok url=${evoUrl.slice(0, 50)}... instance=${integration.instance_name} elapsed=${elapsed()}`,
+    )
+
+    // Rate limit: msg/hour check
+    if (
+      integration.rate_limit_enabled &&
+      contact.msg_count_hour >= (integration.rate_limit_msg_per_hour ?? 200)
+    ) {
+      console.log(
+        `[AI Handler] rate_limit_msg_hit contactId=${contactId} count=${contact.msg_count_hour} limit=${integration.rate_limit_msg_per_hour}`,
+      )
+      await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
+        method: 'POST',
+        headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: contact.remote_jid,
+          text: integration.rate_limit_message ?? 'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+        }),
+      }).catch((err: any) =>
+        console.error(`[AI Handler] rate_limit_msg_send_failed contactId=${contactId}:`, err),
+      )
+      await supabase
+        .from('whatsapp_contacts')
+        .update({ pipeline_stage: 'Contato Humano', last_message_at: new Date().toISOString() })
+        .eq('id', contactId)
       return
     }
 
@@ -127,25 +222,67 @@ export async function processAiResponse(
     )
 
     const HANDOFF_INSTRUCTION = agent.human_handoff_enabled
-      ? '\n\nQuando o cliente pedir explicitamente para falar com um atendente humano, ou quando a situação exigir atenção humana que você não consiga resolver, inclua a tag <transferir_humano> no final da sua resposta. Exemplo: "Claro, vou transferir você para um de nossos atendentes! <transferir_humano>". A tag é processada automaticamente e não aparece para o cliente.'
+      ? 'REGRA PRIORITÁRIA — TRANSBORDO PARA HUMANO:\nSempre que o cliente pedir para falar com um humano, atendente, pessoa real, ou quando a situação exigir atenção humana que você não consiga resolver, você DEVE incluir a tag <transferir_humano> ao final da sua resposta. NUNCA diga que não consegue transferir ou que só existe você. Exemplo correto: "Claro! Vou te transferir para um atendente agora. <transferir_humano>". A tag é removida automaticamente antes de chegar ao cliente.\n\n'
       : ''
-    const effectiveSystemPrompt = (agent.system_prompt || '') + HANDOFF_INSTRUCTION
+    const effectiveSystemPrompt = HANDOFF_INSTRUCTION + (agent.system_prompt || '')
 
     const modelId = agent.model_id
     const memoryLimit = agent.memory_limit ?? 20
 
-    const { data: messages, error: messagesError } = await supabase
+    // Over-fetch so filtered-out messages (media without caption, deleted) don't shrink context.
+    // Secondary sort by created_at breaks timestamp ties in message bursts (WhatsApp UNIX seconds = low precision).
+    const fetchLimit = Math.min(memoryLimit * 3, 200)
+
+    let { data: messages, error: messagesError } = await supabase
       .from('whatsapp_messages')
-      .select('text, from_me, type, transcript')
+      .select('text, from_me, type, transcript, timestamp')
       .eq('contact_id', contactId)
       .order('timestamp', { ascending: false })
-      .limit(memoryLimit)
+      .order('created_at', { ascending: false })
+      .limit(fetchLimit)
 
     if (messagesError) {
       console.error(
         `[AI Handler] EXIT messages_query_failed contactId=${contactId} supabase_code=${messagesError?.code} supabase_message=${messagesError?.message}`,
       )
       return
+    }
+
+    // Scenario 2 recovery: contact exists but messages were migrated to phone contact during a concurrent merge.
+    if ((!messages || messages.length === 0) && contact.remote_jid.includes('@lid')) {
+      const { data: identity } = await supabase
+        .from('contact_identity')
+        .select('phone_jid')
+        .eq('user_id', userId)
+        .eq('lid_jid', contact.remote_jid)
+        .maybeSingle()
+
+      if (identity?.phone_jid) {
+        const { data: phoneContact } = await supabase
+          .from('whatsapp_contacts')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('remote_jid', identity.phone_jid)
+          .maybeSingle()
+
+        if (phoneContact) {
+          contactId = phoneContact.id
+          const { data: retriedMsgs } = await supabase
+            .from('whatsapp_messages')
+            .select('text, from_me, type, transcript, timestamp')
+            .eq('contact_id', contactId)
+            .order('timestamp', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(fetchLimit)
+
+          if (retriedMsgs?.length) {
+            messages = retriedMsgs
+            console.log(
+              `[AI Handler] lid_merge_recovery_messages lidJid=${contact.remote_jid} contactId=${contactId} msgs=${messages.length}`,
+            )
+          }
+        }
+      }
     }
 
     if (!messages || (messages.length === 0 && memoryLimit > 0)) {
@@ -177,7 +314,7 @@ export async function processAiResponse(
     const userMsgs = history.filter((m) => m.role === 'user').length
     const assistantMsgs = history.filter((m) => m.role === 'assistant').length
     console.log(
-      `[AI Handler] openrouter_call_start model=${modelId} history_len=${history.length} user_msgs=${userMsgs} assistant_msgs=${assistantMsgs} elapsed=${elapsed()}`,
+      `[AI Handler] openrouter_call_start model=${modelId} history_len=${history.length} user_msgs=${userMsgs} assistant_msgs=${assistantMsgs} fetched=${messages.length} elapsed=${elapsed()}`,
     )
 
     const openai = new OpenAI({
@@ -243,43 +380,17 @@ export async function processAiResponse(
       )
     }
 
-    const { data: integration, error: integError } = await supabase
-      .from('user_integrations')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+    // Token rate limit: count prompt + completion tokens
+    const totalTokens =
+      (completion.usage?.prompt_tokens ?? 0) + (completion.usage?.completion_tokens ?? 0)
+    let tokenLimitHit = false
 
     if (integError || !integration || !integration.instance_name) {
       console.error(
         `[AI Handler] EXIT integration_missing userId=${userId} instance_name=${integration?.instance_name ?? 'NULL'} ` +
           `supabase_code=${integError?.code ?? 'none'} supabase_message=${integError?.message ?? 'none'}`,
       )
-      return
     }
-
-    const evoUrl = (
-      integration.evolution_api_url ||
-      Deno.env.get('EVOLUTION_API_URL') ||
-      ''
-    ).replace(/\/$/, '')
-    const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
-
-    if (!evoUrl) {
-      console.error(
-        `[AI Handler] EXIT evolution_url_missing userId=${userId} — save Evolution API URL in Settings > Credenciais`,
-      )
-      return
-    }
-    if (!evoKey) {
-      console.error(
-        `[AI Handler] EXIT evolution_key_missing userId=${userId} — save Evolution API Key in Settings > Credenciais`,
-      )
-      return
-    }
-
-    console.log(
-      `[AI Handler] evolution_ok url=${evoUrl.slice(0, 50)}... instance=${integration.instance_name} elapsed=${elapsed()}`,
-    )
 
     // Cancellation check 2: was a newer message received during the OpenRouter call?
     const { data: contactVersionBeforeSend } = await supabase
@@ -321,7 +432,7 @@ export async function processAiResponse(
       },
       body: JSON.stringify({
         number: contact.remote_jid,
-        text: cleanText,
+        text: textToSend,
       }),
     })
 
@@ -336,6 +447,20 @@ export async function processAiResponse(
     }
 
     console.log(`[AI Handler] send_ok http_status=${sendRes.status} elapsed=${elapsed()}`)
+
+    if (tokenLimitHit) {
+      console.log(`[AI Handler] token_limit_hit contactId=${contactId} — sending rate limit message and handoffing`)
+      await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
+        method: 'POST',
+        headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: contact.remote_jid,
+          text: integration.rate_limit_message ?? 'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+        }),
+      }).catch((err: any) =>
+        console.error(`[AI Handler] token_limit_msg_send_failed contactId=${contactId}:`, err),
+      )
+    }
 
     const result = await sendRes.json()
     const messageId = result?.key?.id || result?.id || crypto.randomUUID()
@@ -379,6 +504,12 @@ export async function processAiResponse(
       if (surviving) contactId = surviving.id
     }
 
+    // Ensure AI timestamp is always after the last user message.
+    // WhatsApp timestamps are UNIX seconds; server clock may be behind WhatsApp — causing
+    // the AI reply to sort before the message it's responding to.
+    const lastMsgMs = lastMsgTimestamp ? new Date(lastMsgTimestamp).getTime() : 0
+    const aiTimestamp = new Date(Math.max(Date.now(), lastMsgMs + 1000)).toISOString()
+
     const { error: upsertError } = await supabase.from('whatsapp_messages').upsert(
       {
         user_id: userId,
@@ -387,7 +518,7 @@ export async function processAiResponse(
         from_me: true,
         text: cleanText,
         type: 'text',
-        timestamp: new Date().toISOString(),
+        timestamp: aiTimestamp,
         raw: result,
       },
       { onConflict: 'user_id,message_id' },
@@ -403,7 +534,7 @@ export async function processAiResponse(
     const { error: contactUpdateError } = await supabase
       .from('whatsapp_contacts')
       .update({
-        pipeline_stage: handoffDetected ? 'Contato Humano' : 'Em Conversa',
+        pipeline_stage: (handoffDetected || tokenLimitHit) ? 'Contato Humano' : 'Em Conversa',
         last_message_at: new Date().toISOString(),
       })
       .eq('id', contactId)

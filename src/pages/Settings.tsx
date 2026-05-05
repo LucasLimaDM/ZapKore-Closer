@@ -14,8 +14,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { Loader2, MessageCircle, Plug, Unplug, CheckCircle2, KeyRound } from 'lucide-react'
+import { Loader2, MessageCircle, Plug, Unplug, CheckCircle2, KeyRound, Tag, Shield } from 'lucide-react'
 
 export default function Settings() {
   const { integration, setIntegration, loading: integrationLoading } = useIntegration()
@@ -31,10 +33,34 @@ export default function Settings() {
   const [editUrl, setEditUrl] = useState('')
   const [editKey, setEditKey] = useState('')
   const [savingCreds, setSavingCreds] = useState(false)
+  const [captionsEnabled, setCaptionsEnabled] = useState(false)
+  const [userDisplayName, setUserDisplayName] = useState('')
+  const [savingCaptions, setSavingCaptions] = useState(false)
+  const [rateLimitEnabled, setRateLimitEnabled] = useState(true)
+  const [rateLimitMsgPerHour, setRateLimitMsgPerHour] = useState(200)
+  const [rateLimitTokensPerDay, setRateLimitTokensPerDay] = useState(2000000)
+  const [rateLimitMessage, setRateLimitMessage] = useState(
+    'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+  )
+  const [savingRateLimit, setSavingRateLimit] = useState(false)
 
   useEffect(() => {
     if (integration?.status === 'CONNECTED') setQrCode(null)
   }, [integration?.status])
+
+  useEffect(() => {
+    if (integration) {
+      setCaptionsEnabled(integration.captions_enabled ?? false)
+      setUserDisplayName(integration.user_display_name ?? '')
+      setRateLimitEnabled(integration.rate_limit_enabled ?? true)
+      setRateLimitMsgPerHour(integration.rate_limit_msg_per_hour ?? 200)
+      setRateLimitTokensPerDay(integration.rate_limit_tokens_per_day ?? 2000000)
+      setRateLimitMessage(
+        integration.rate_limit_message ??
+          'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+      )
+    }
+  }, [integration?.id])
 
   useEffect(() => {
     const loadCredentials = async () => {
@@ -81,6 +107,43 @@ export default function Settings() {
     setEditingCreds(false)
     setEditUrl('')
     setEditKey('')
+  }
+
+  const handleSaveCaptions = async () => {
+    setSavingCaptions(true)
+    try {
+      const { error } = await supabase
+        .from('user_integrations')
+        .update({ captions_enabled: captionsEnabled, user_display_name: userDisplayName.trim() || null })
+        .eq('user_id', integration!.user_id)
+      if (error) throw error
+      toast.success('Configurações de legendas salvas')
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao salvar legendas')
+    } finally {
+      setSavingCaptions(false)
+    }
+  }
+
+  const handleSaveRateLimit = async () => {
+    setSavingRateLimit(true)
+    try {
+      const { error } = await supabase
+        .from('user_integrations')
+        .update({
+          rate_limit_enabled: rateLimitEnabled,
+          rate_limit_msg_per_hour: rateLimitMsgPerHour,
+          rate_limit_tokens_per_day: rateLimitTokensPerDay,
+          rate_limit_message: rateLimitMessage.trim(),
+        })
+        .eq('user_id', integration!.user_id)
+      if (error) throw error
+      toast.success('Configurações de proteção salvas')
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao salvar proteção')
+    } finally {
+      setSavingRateLimit(false)
+    }
   }
 
   const handleConnect = async () => {
@@ -389,6 +452,140 @@ export default function Settings() {
                 </Button>
               )}
             </div>
+          </CardFooter>
+        </Card>
+        {/* Legendas Card */}
+        <Card className="shadow-subtle border border-border/40 rounded-[2rem] bg-card overflow-hidden">
+          <CardHeader className="pb-4 pt-8 px-8">
+            <CardTitle className="flex items-center gap-3 text-xl tracking-tight">
+              <div className="bg-primary/10 text-primary p-2.5 rounded-2xl">
+                <Tag className="h-5 w-5" />
+              </div>
+              Legendas
+            </CardTitle>
+            <CardDescription className="font-medium text-sm text-muted-foreground max-w-sm">
+              Identifica quem enviou cada mensagem no WhatsApp
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="px-8 pb-8 space-y-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-semibold text-foreground">Ativar legendas</span>
+                <span className="text-xs font-medium text-muted-foreground">
+                  Inclui o nome do remetente no início de cada mensagem enviada
+                </span>
+              </div>
+              <Switch
+                checked={captionsEnabled}
+                onCheckedChange={setCaptionsEnabled}
+              />
+            </div>
+
+            {captionsEnabled && (
+              <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <Label htmlFor="settings-display-name">Seu nome</Label>
+                <Input
+                  id="settings-display-name"
+                  type="text"
+                  placeholder="Ex: Lucas"
+                  value={userDisplayName}
+                  onChange={(e) => setUserDisplayName(e.target.value)}
+                  disabled={savingCaptions}
+                  className="max-w-xs"
+                />
+                <p className="text-xs text-muted-foreground font-medium">
+                  Aparece quando você envia mensagens manualmente. O nome do agente IA é definido nas configurações do agente.
+                </p>
+              </div>
+            )}
+
+            <Button
+              onClick={handleSaveCaptions}
+              disabled={savingCaptions}
+              className="rounded-full px-6 h-10 font-semibold"
+            >
+              {savingCaptions ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
+                </>
+              ) : (
+                'Salvar'
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Proteção contra Spam Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Proteção contra Spam
+            </CardTitle>
+            <CardDescription>
+              Limites automáticos por contato para evitar abusos e loops de IA.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="font-semibold">Proteção ativa</Label>
+                <p className="text-xs text-muted-foreground">
+                  Ativa os limites de mensagens e tokens por contato.
+                </p>
+              </div>
+              <Switch
+                checked={rateLimitEnabled}
+                onCheckedChange={setRateLimitEnabled}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rl-msg">Mensagens por hora (por contato)</Label>
+              <Input
+                id="rl-msg"
+                type="number"
+                min={1}
+                max={10000}
+                value={rateLimitMsgPerHour}
+                onChange={(e) => setRateLimitMsgPerHour(Number(e.target.value))}
+                disabled={!rateLimitEnabled}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rl-tokens">Tokens por dia (por contato)</Label>
+              <Input
+                id="rl-tokens"
+                type="number"
+                min={1000}
+                max={10000000}
+                value={rateLimitTokensPerDay}
+                onChange={(e) => setRateLimitTokensPerDay(Number(e.target.value))}
+                disabled={!rateLimitEnabled}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rl-message">Mensagem enviada ao atingir o limite</Label>
+              <Textarea
+                id="rl-message"
+                rows={3}
+                value={rateLimitMessage}
+                onChange={(e) => setRateLimitMessage(e.target.value)}
+                disabled={!rateLimitEnabled}
+              />
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={handleSaveRateLimit} disabled={savingRateLimit}>
+              {savingRateLimit ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                'Salvar proteção'
+              )}
+            </Button>
           </CardFooter>
         </Card>
       </div>
