@@ -1,10 +1,14 @@
 import { useRef, useState, useEffect } from 'react'
-import { Play, Pause, Loader2, MicOff, ChevronDown, ChevronUp } from 'lucide-react'
+import { Play, Pause, Loader2, MicOff, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MediaEntry } from '@/hooks/use-media-loader'
+import { WhatsAppMessage } from '@/lib/types'
+import { supabase } from '@/lib/supabase/client'
 
 interface AudioPlayerProps {
-  blobUrl: string | null
-  isLoading: boolean
+  msg: WhatsAppMessage
+  entry: MediaEntry | undefined
+  request: (messageId: string, contactId: string) => void
   fromMe: boolean
   transcript?: string | null
 }
@@ -19,13 +23,64 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export function AudioPlayer({ blobUrl, isLoading, fromMe, transcript }: AudioPlayerProps) {
+export function AudioPlayer({ msg, entry, request, fromMe, transcript }: AudioPlayerProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const requestedRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [speed, setSpeed] = useState<PlaybackRate>(1)
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const transcribingRequestedRef = useRef(false)
+
+  const blobUrl = entry?.blobUrl ?? null
+  const isLoading = (entry?.status ?? 'loading') === 'loading'
+
+  useEffect(() => {
+    if (entry?.status === 'error') requestedRef.current = false
+  }, [entry?.status])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting && !requestedRef.current) {
+          requestedRef.current = true
+          request(msg.message_id, msg.contact_id)
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [msg.message_id, msg.contact_id, request])
+
+  // On-demand transcription when audio is loaded
+  useEffect(() => {
+    if (blobUrl && !transcript && !transcribingRequestedRef.current && !isTranscribing) {
+      const handleTranscription = async () => {
+        transcribingRequestedRef.current = true
+        setIsTranscribing(true)
+        try {
+          const { error } = await supabase.functions.invoke('evolution-transcribe-message', {
+            body: { messageId: msg.message_id, contactId: msg.contact_id },
+          })
+          if (error) {
+            const details = await error.context?.json()
+            console.error('[AudioPlayer] Edge Function error:', error.message, details)
+          }
+        } catch (err) {
+          console.error('[AudioPlayer] Request failed:', err)
+        } finally {
+          setIsTranscribing(false)
+        }
+      }
+      handleTranscription()
+    }
+  }, [blobUrl, transcript, msg.message_id, msg.contact_id, isTranscribing])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -84,7 +139,7 @@ export function AudioPlayer({ blobUrl, isLoading, fromMe, transcript }: AudioPla
   const isError = !isLoading && !blobUrl
 
   return (
-    <div className="flex flex-col gap-1.5 min-w-[240px] max-w-full">
+    <div ref={containerRef} className="flex flex-col gap-1.5 min-w-[240px] max-w-full">
       <div
         className={cn(
           'flex items-center gap-2.5 px-3 py-2.5 rounded-[1.25rem] sm:rounded-[1.5rem] shadow-sm',
@@ -150,31 +205,47 @@ export function AudioPlayer({ blobUrl, isLoading, fromMe, transcript }: AudioPla
         </button>
       </div>
 
-      {transcript && (
+      {(transcript || isTranscribing) && (
         <div
           className={cn(
-            'rounded-xl border px-3 py-2 text-xs',
+            'rounded-xl border px-3 py-2 text-xs transition-all duration-500',
             fromMe
               ? 'bg-primary/10 border-primary/20 text-primary-foreground/80'
               : 'bg-muted/40 border-border/40 text-muted-foreground',
+            isTranscribing && 'animate-pulse',
           )}
         >
           <button
             type="button"
             onClick={() => setTranscriptCollapsed((v) => !v)}
             className="flex items-center justify-between w-full mb-1 opacity-70 hover:opacity-100 transition-opacity"
+            disabled={isTranscribing}
           >
-            <span className="text-[10px] uppercase tracking-widest font-semibold">Transcrição</span>
-            {transcriptCollapsed ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronUp className="h-3 w-3" />
-            )}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-widest font-semibold">
+                {isTranscribing ? 'Transcrevendo...' : 'Transcrição'}
+              </span>
+              {isTranscribing && <Sparkles className="h-3 w-3 animate-pulse" />}
+            </div>
+            {!isTranscribing &&
+              (transcriptCollapsed ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronUp className="h-3 w-3" />
+              ))}
           </button>
           {!transcriptCollapsed && (
-            <p className="italic border-l-2 border-current pl-2 opacity-80 leading-relaxed">
-              {transcript}
-            </p>
+            <div className="italic border-l-2 border-current pl-2 opacity-80 leading-relaxed min-h-[1.5em] flex items-center">
+              {isTranscribing ? (
+                <div className="flex gap-1">
+                  <span className="animate-bounce delay-0">.</span>
+                  <span className="animate-bounce delay-150">.</span>
+                  <span className="animate-bounce delay-300">.</span>
+                </div>
+              ) : (
+                <p>{transcript}</p>
+              )}
+            </div>
           )}
         </div>
       )}

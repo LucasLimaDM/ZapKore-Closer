@@ -32,7 +32,7 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
 
     const fetchIntegration = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('user_integrations')
         .select('*')
         .eq('user_id', user.id)

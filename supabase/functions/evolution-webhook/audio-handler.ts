@@ -12,6 +12,7 @@ export async function processAudioMessage(
   evoUrl: string,
   evoKey: string,
   instanceName: string,
+  lidJid?: string,
 ) {
   console.log(`[Audio Handler] Starting for message ${messageId}, contact ${contactId}`)
   const supabase = createClient(supabaseUrl, supabaseKey)
@@ -89,7 +90,7 @@ export async function processAudioMessage(
       console.log(`[Audio Handler] Message ${messageId} already transcribed, skipping`)
     }
 
-    await processAiResponse(userId, contactId, supabaseUrl, supabaseKey, triggerVersion)
+    await processAiResponse(userId, contactId, supabaseUrl, supabaseKey, triggerVersion, lidJid)
   } catch (err) {
     console.error('[Audio Handler] Unexpected error:', err)
   }
