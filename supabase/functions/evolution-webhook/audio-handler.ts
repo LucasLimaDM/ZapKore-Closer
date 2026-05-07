@@ -12,6 +12,7 @@ export async function processAudioMessage(
   evoUrl: string,
   evoKey: string,
   instanceName: string,
+  lidJid?: string,
 ) {
   console.log(`[Audio Handler] Starting for message ${messageId}, contact ${contactId}`)
   const supabase = createClient(supabaseUrl, supabaseKey)
@@ -52,17 +53,14 @@ export async function processAudioMessage(
           .single()
 
         if (audioKey?.key) {
-          const evoRes = await fetch(
-            `${evoUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
-            {
-              method: 'POST',
-              headers: { apikey: evoKey, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                message: { key: { id: messageId } },
-                convertToMp4: false,
-              }),
-            },
-          )
+          const evoRes = await fetch(`${evoUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+            method: 'POST',
+            headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: { key: { id: messageId } },
+              convertToMp4: false,
+            }),
+          })
 
           if (evoRes.ok) {
             const { base64 } = await evoRes.json()
@@ -92,7 +90,7 @@ export async function processAudioMessage(
       console.log(`[Audio Handler] Message ${messageId} already transcribed, skipping`)
     }
 
-    await processAiResponse(userId, contactId, supabaseUrl, supabaseKey, triggerVersion)
+    await processAiResponse(userId, contactId, supabaseUrl, supabaseKey, triggerVersion, lidJid)
   } catch (err) {
     console.error('[Audio Handler] Unexpected error:', err)
   }

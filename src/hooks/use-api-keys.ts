@@ -57,7 +57,11 @@ export const useAPIKeys = () => {
 
   const deleteAPIKey = async (id: string) => {
     if (!user) return
-    const { error } = await supabase.from('user_api_keys').delete().eq('id', id).eq('user_id', user.id)
+    const { error } = await supabase
+      .from('user_api_keys')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
 
     if (error) {
       console.error('Error deleting API key:', error)

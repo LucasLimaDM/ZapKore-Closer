@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
@@ -32,37 +32,6 @@ function AppRoutes() {
         <Route path="/" element={<Index />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
-      </Route>
-
-      <Route path="/app" element={<DashboardLayout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="onboarding" element={<Onboarding />} />
-        <Route path="pipeline" element={<Pipeline />} />
-        <Route path="contacts" element={<Contacts />} />
-        <Route path="chat/:id" element={<Chat />} />
-        <Route path="agents" element={<Agents />} />
-      </Route>
-
-      <Route path="/settings" element={<DashboardLayout />}>
-        <Route index element={<Settings />} />
-      </Route>
-
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  )
-}
-
-function AppRoutes() {
-  const { loading: authLoading } = useAuth()
-  const { loading: integrationLoading } = useIntegration()
-
-  if (authLoading || integrationLoading) return <SplashScreen />
-
-  return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Index />} />
-        <Route path="/auth" element={<Auth />} />
       </Route>
 
       <Route path="/app" element={<DashboardLayout />}>

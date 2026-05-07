@@ -86,7 +86,7 @@ export async function processAiResponse(
     if (integError || !integration || !integration.instance_name) {
       console.error(
         `[AI Handler] EXIT integration_missing userId=${userId} instance_name=${integration?.instance_name ?? 'NULL'} ` +
-        `supabase_code=${integError?.code ?? 'none'} supabase_message=${integError?.message ?? 'none'}`,
+          `supabase_code=${integError?.code ?? 'none'} supabase_message=${integError?.message ?? 'none'}`,
       )
       return
     }
@@ -128,7 +128,9 @@ export async function processAiResponse(
         headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           number: contact.remote_jid,
-          text: integration.rate_limit_message ?? 'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+          text:
+            integration.rate_limit_message ??
+            'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
         }),
       }).catch((err: any) =>
         console.error(`[AI Handler] rate_limit_msg_send_failed contactId=${contactId}:`, err),
@@ -156,8 +158,8 @@ export async function processAiResponse(
 
     console.log(
       `[AI Handler] agent_loaded id=${agent.id} model=${agent.model_id ?? 'NULL'} delay=${agent.message_delay} ` +
-      `api_key_id=${agent.api_key_id ?? 'NULL'} linked_key_present=${!!agent.user_api_keys?.key} ` +
-      `system_prompt_len=${agent.system_prompt?.length ?? 0} memory_limit=${agent.memory_limit} elapsed=${elapsed()}`,
+        `api_key_id=${agent.api_key_id ?? 'NULL'} linked_key_present=${!!agent.user_api_keys?.key} ` +
+        `system_prompt_len=${agent.system_prompt?.length ?? 0} memory_limit=${agent.memory_limit} elapsed=${elapsed()}`,
     )
 
     if (!agent.model_id) {
@@ -168,13 +170,17 @@ export async function processAiResponse(
     }
 
     if (!agent.system_prompt || agent.system_prompt.trim().length === 0) {
-      console.warn(`[AI Handler] WARN system_prompt_empty agent_id=${agent.id} — agent will reply without instructions`)
+      console.warn(
+        `[AI Handler] WARN system_prompt_empty agent_id=${agent.id} — agent will reply without instructions`,
+      )
     }
 
     const messageDelay = agent.message_delay ?? 0
 
     if (messageDelay > 0) {
-      console.log(`[AI Handler] debounce_sleep delay=${messageDelay}s contactId=${contactId} triggerVersion=${triggerVersion}`)
+      console.log(
+        `[AI Handler] debounce_sleep delay=${messageDelay}s contactId=${contactId} triggerVersion=${triggerVersion}`,
+      )
       await new Promise((resolve) => setTimeout(resolve, messageDelay * 1000))
     }
 
@@ -202,17 +208,20 @@ export async function processAiResponse(
     console.log(`[AI Handler] version_ok v=${triggerVersion} elapsed=${elapsed()}`)
 
     // Get API Key: linked key → legacy gemini_api_key column → env
-    const apiKey = agent.user_api_keys?.key || agent.gemini_api_key || Deno.env.get('GEMINI_API_KEY')
+    const apiKey =
+      agent.user_api_keys?.key || agent.gemini_api_key || Deno.env.get('GEMINI_API_KEY')
 
     if (!apiKey) {
       console.error(
         `[AI Handler] EXIT api_key_missing agent_id=${agent.id} api_key_id=${agent.api_key_id ?? 'NULL'} ` +
-        `linked_key_row_present=${agent.user_api_keys !== null} — add an OpenRouter key in Agentes > Chaves de API`,
+          `linked_key_row_present=${agent.user_api_keys !== null} — add an OpenRouter key in Agentes > Chaves de API`,
       )
       return
     }
 
-    console.log(`[AI Handler] api_key_ok source=${agent.user_api_keys?.key ? 'linked_key' : agent.gemini_api_key ? 'legacy_column' : 'env'} prefix=${apiKey.slice(0, 10)}... length=${apiKey.length}`)
+    console.log(
+      `[AI Handler] api_key_ok source=${agent.user_api_keys?.key ? 'linked_key' : agent.gemini_api_key ? 'legacy_column' : 'env'} prefix=${apiKey.slice(0, 10)}... length=${apiKey.length}`,
+    )
 
     const HANDOFF_INSTRUCTION = agent.human_handoff_enabled
       ? 'REGRA PRIORITÁRIA — TRANSBORDO PARA HUMANO:\nSempre que o cliente pedir para falar com um humano, atendente, pessoa real, ou quando a situação exigir atenção humana que você não consiga resolver, você DEVE incluir a tag <transferir_humano> ao final da sua resposta. NUNCA diga que não consegue transferir ou que só existe você. Exemplo correto: "Claro! Vou te transferir para um atendente agora. <transferir_humano>". A tag é removida automaticamente antes de chegar ao cliente.\n\n'
@@ -288,64 +297,62 @@ export async function processAiResponse(
     // Most recent message timestamp — used later to ensure AI response appears after it in history.
     const lastMsgTimestamp = messages[0]?.timestamp
 
-    const AUDIO_FALLBACK = '[Áudio recebido. Você ainda não consegue transcrever áudios - informe o cliente.]'
+    const AUDIO_FALLBACK =
+      '[Áudio recebido. Você ainda não consegue transcrever áudios - informe o cliente.]'
 
-    const history = memoryLimit > 0
-      ? messages
-          .reverse() // chronological order
-          .reduce<{ role: string; content: string }[]>((acc, m) => {
-            const isAudio = m.type === 'audioMessage' || m.type === 'pttMessage'
-            const content = isAudio
-              ? (m.transcript || AUDIO_FALLBACK)
-              : (m.text || '')
-            // Skip empty messages: deleted (protocolMessage), media without caption, etc.
-            if (!content.trim()) return acc
-            acc.push({ role: m.from_me ? 'assistant' : 'user', content })
-            return acc
-          }, [])
-          .slice(-memoryLimit) // keep the most recent memoryLimit *meaningful* messages
-      : []
+    const history =
+      memoryLimit > 0
+        ? messages
+            .reverse() // chronological order
+            .reduce<{ role: string; content: string }[]>((acc, m) => {
+              const isAudio = m.type === 'audioMessage' || m.type === 'pttMessage'
+              const content = isAudio ? m.transcript || AUDIO_FALLBACK : m.text || ''
+              // Skip empty messages: deleted (protocolMessage), media without caption, etc.
+              if (!content.trim()) return acc
+              acc.push({ role: m.from_me ? 'assistant' : 'user', content })
+              return acc
+            }, [])
+            .slice(-memoryLimit) // keep the most recent memoryLimit *meaningful* messages
+        : []
 
-    const userMsgs = history.filter(m => m.role === 'user').length
-    const assistantMsgs = history.filter(m => m.role === 'assistant').length
+    const userMsgs = history.filter((m) => m.role === 'user').length
+    const assistantMsgs = history.filter((m) => m.role === 'assistant').length
     console.log(
       `[AI Handler] openrouter_call_start model=${modelId} history_len=${history.length} user_msgs=${userMsgs} assistant_msgs=${assistantMsgs} fetched=${messages.length} elapsed=${elapsed()}`,
     )
 
     const openai = new OpenAI({
       apiKey: apiKey,
-      baseURL: "https://openrouter.ai/api/v1",
+      baseURL: 'https://openrouter.ai/api/v1',
       defaultHeaders: {
-        "HTTP-Referer": "https://zapkore-closer.com",
-        "X-Title": "ZapKore Closer",
-      }
+        'HTTP-Referer': 'https://zapkore-closer.com',
+        'X-Title': 'ZapKore Closer',
+      },
     })
 
     let completion
     try {
       completion = await openai.chat.completions.create({
         model: modelId,
-        messages: [
-          { role: 'system', content: effectiveSystemPrompt },
-          ...history
-        ],
+        messages: [{ role: 'system', content: effectiveSystemPrompt }, ...history],
         temperature: 0.7,
         max_tokens: 800,
       })
       console.log(
         `[AI Handler] openrouter_ok model=${modelId} finish_reason=${completion.choices[0]?.finish_reason} ` +
-        `prompt_tokens=${completion.usage?.prompt_tokens} completion_tokens=${completion.usage?.completion_tokens} elapsed=${elapsed()}`,
+          `prompt_tokens=${completion.usage?.prompt_tokens} completion_tokens=${completion.usage?.completion_tokens} elapsed=${elapsed()}`,
       )
     } catch (openrouterErr: any) {
       // Capture full OpenRouter error including provider metadata
       const errBody = openrouterErr?.error ?? openrouterErr?.response?.data ?? null
-      const providerName = errBody?.metadata?.provider_name ?? openrouterErr?.metadata?.provider_name ?? 'unknown'
+      const providerName =
+        errBody?.metadata?.provider_name ?? openrouterErr?.metadata?.provider_name ?? 'unknown'
       const rawMsg = errBody?.metadata?.raw ?? openrouterErr?.metadata?.raw ?? ''
       console.error(
         `[AI Handler] EXIT openrouter_error model=${modelId} ` +
-        `http_status=${openrouterErr?.status ?? 'none'} code=${openrouterErr?.code ?? 'none'} ` +
-        `message="${openrouterErr?.message}" provider=${providerName} provider_raw="${rawMsg}" ` +
-        `full_error=${JSON.stringify(errBody ?? { message: openrouterErr?.message })} elapsed=${elapsed()}`,
+          `http_status=${openrouterErr?.status ?? 'none'} code=${openrouterErr?.code ?? 'none'} ` +
+          `message="${openrouterErr?.message}" provider=${providerName} provider_raw="${rawMsg}" ` +
+          `full_error=${JSON.stringify(errBody ?? { message: openrouterErr?.message })} elapsed=${elapsed()}`,
       )
       return
     }
@@ -359,14 +366,22 @@ export async function processAiResponse(
       return
     }
 
-    console.log(`[AI Handler] llm_response_ok length=${responseText.length} preview="${responseText.slice(0, 80)}${responseText.length > 80 ? '…' : ''}"`)
+    console.log(
+      `[AI Handler] llm_response_ok length=${responseText.length} preview="${responseText.slice(0, 80)}${responseText.length > 80 ? '…' : ''}"`,
+    )
 
     // Detect and strip <transferir_humano> tag (self-closing, open-only, or paired)
-    const handoffDetected = agent.human_handoff_enabled && /<transferir_humano\s*(?:\/>|>[\s\S]*?<\/transferir_humano>|>)/g.test(responseText)
-    const cleanText = responseText.replace(/<transferir_humano\s*(?:\/>|>[\s\S]*?<\/transferir_humano>|>)/g, '').trim()
+    const handoffDetected =
+      agent.human_handoff_enabled &&
+      /<transferir_humano\s*(?:\/>|>[\s\S]*?<\/transferir_humano>|>)/g.test(responseText)
+    const cleanText = responseText
+      .replace(/<transferir_humano\s*(?:\/>|>[\s\S]*?<\/transferir_humano>|>)/g, '')
+      .trim()
 
     if (handoffDetected) {
-      console.log(`[AI Handler] handoff_tag_detected contactId=${contactId} — transferring to human`)
+      console.log(
+        `[AI Handler] handoff_tag_detected contactId=${contactId} — transferring to human`,
+      )
     }
 
     // Token rate limit: count prompt + completion tokens
@@ -406,18 +421,20 @@ export async function processAiResponse(
         .update({ pipeline_stage: 'Contato Humano' })
         .eq('id', contactId)
       if (handoffStageErr) {
-        console.error(`[AI Handler] WARN handoff_stage_update_failed contactId=${contactId} supabase_message=${handoffStageErr.message}`)
+        console.error(
+          `[AI Handler] WARN handoff_stage_update_failed contactId=${contactId} supabase_message=${handoffStageErr.message}`,
+        )
       } else {
         console.log(`[AI Handler] handoff_stage_set contactId=${contactId}`)
       }
     }
 
     const textToSend =
-      integration.captions_enabled && agent.name
-        ? `*[${agent.name}]*\n${cleanText}`
-        : cleanText
+      integration.captions_enabled && agent.name ? `*[${agent.name}]*\n${cleanText}` : cleanText
 
-    console.log(`[AI Handler] send_start dest=${contact.remote_jid} instance=${integration.instance_name} elapsed=${elapsed()}`)
+    console.log(
+      `[AI Handler] send_start dest=${contact.remote_jid} instance=${integration.instance_name} elapsed=${elapsed()}`,
+    )
 
     const sendRes = await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
       method: 'POST',
@@ -435,8 +452,8 @@ export async function processAiResponse(
       const errText = await sendRes.text()
       console.error(
         `[AI Handler] EXIT sendtext_failed http_status=${sendRes.status} ` +
-        `url=${evoUrl}/message/sendText/${integration.instance_name} ` +
-        `dest=${contact.remote_jid} body=${errText.slice(0, 400)} elapsed=${elapsed()}`,
+          `url=${evoUrl}/message/sendText/${integration.instance_name} ` +
+          `dest=${contact.remote_jid} body=${errText.slice(0, 400)} elapsed=${elapsed()}`,
       )
       return
     }
@@ -444,13 +461,17 @@ export async function processAiResponse(
     console.log(`[AI Handler] send_ok http_status=${sendRes.status} elapsed=${elapsed()}`)
 
     if (tokenLimitHit) {
-      console.log(`[AI Handler] token_limit_hit contactId=${contactId} — sending rate limit message and handoffing`)
+      console.log(
+        `[AI Handler] token_limit_hit contactId=${contactId} — sending rate limit message and handoffing`,
+      )
       await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
         method: 'POST',
         headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           number: contact.remote_jid,
-          text: integration.rate_limit_message ?? 'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+          text:
+            integration.rate_limit_message ??
+            'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
         }),
       }).catch((err: any) =>
         console.error(`[AI Handler] token_limit_msg_send_failed contactId=${contactId}:`, err),
@@ -522,14 +543,14 @@ export async function processAiResponse(
     if (upsertError) {
       console.error(
         `[AI Handler] WARN message_save_failed messageId=${messageId} contactId=${contactId} ` +
-        `supabase_code=${upsertError.code} supabase_message=${upsertError.message}`,
+          `supabase_code=${upsertError.code} supabase_message=${upsertError.message}`,
       )
     }
 
     const { error: contactUpdateError } = await supabase
       .from('whatsapp_contacts')
       .update({
-        pipeline_stage: (handoffDetected || tokenLimitHit) ? 'Contato Humano' : 'Em Conversa',
+        pipeline_stage: handoffDetected || tokenLimitHit ? 'Contato Humano' : 'Em Conversa',
         last_message_at: new Date().toISOString(),
       })
       .eq('id', contactId)
@@ -537,15 +558,17 @@ export async function processAiResponse(
     if (contactUpdateError) {
       console.error(
         `[AI Handler] WARN contact_update_failed contactId=${contactId} ` +
-        `supabase_code=${contactUpdateError.code} supabase_message=${contactUpdateError.message}`,
+          `supabase_code=${contactUpdateError.code} supabase_message=${contactUpdateError.message}`,
       )
     }
 
-    console.log(`[AI Handler] DONE contactId=${contactId} messageId=${messageId} total_elapsed=${elapsed()}`)
+    console.log(
+      `[AI Handler] DONE contactId=${contactId} messageId=${messageId} total_elapsed=${elapsed()}`,
+    )
   } catch (error: any) {
     console.error(
       `[AI Handler] EXIT unhandled_exception userId=${userId} contactId=${contactId} ` +
-      `error="${error?.message}" stack=${error?.stack?.split('\n')[1]?.trim() ?? 'none'}`,
+        `error="${error?.message}" stack=${error?.stack?.split('\n')[1]?.trim() ?? 'none'}`,
     )
   }
 }
