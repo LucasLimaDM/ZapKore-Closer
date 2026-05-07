@@ -19,7 +19,9 @@ Deno.serve(async (req: Request) => {
     const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     })
-    const { data: { user } } = await anonClient.auth.getUser()
+    const {
+      data: { user },
+    } = await anonClient.auth.getUser()
     if (!user) throw new Error('Unauthorized')
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -91,7 +93,10 @@ Deno.serve(async (req: Request) => {
       })
 
       if (!evoRes.ok) {
-        console.error(`[Transcribe Pending] Failed to download audio ${msg.message_id}:`, evoRes.status)
+        console.error(
+          `[Transcribe Pending] Failed to download audio ${msg.message_id}:`,
+          evoRes.status,
+        )
         continue
       }
 

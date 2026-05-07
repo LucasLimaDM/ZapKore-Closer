@@ -16,7 +16,7 @@ async function testOpenRouter(apiKey: string, modelId: string): Promise<Validati
     const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -31,8 +31,10 @@ async function testOpenRouter(apiKey: string, modelId: string): Promise<Validati
     if (!res.ok) {
       const errorData = body?.error || body
       const providerName = errorData?.metadata?.provider_name ?? 'unknown'
-      const rawMsg = errorData?.metadata?.raw || (typeof errorData?.message === 'string' ? errorData.message : JSON.stringify(errorData))
-      
+      const rawMsg =
+        errorData?.metadata?.raw ||
+        (typeof errorData?.message === 'string' ? errorData.message : JSON.stringify(errorData))
+
       console.error(`[ai-validate-agent] OpenRouter Error:`, JSON.stringify(errorData))
 
       return {
@@ -83,7 +85,10 @@ Deno.serve(async (req: Request) => {
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     })
-    const { data: { user }, error: userError } = await userClient.auth.getUser()
+    const {
+      data: { user },
+      error: userError,
+    } = await userClient.auth.getUser()
     if (userError || !user) throw new Error('Unauthorized')
 
     const { api_key_id, model_id, audio_api_key_id } = await req.json()
@@ -101,7 +106,9 @@ Deno.serve(async (req: Request) => {
         .single()
 
       if (keyErr || !keyRow) {
-        console.error(`[ai-validate-agent] key_not_found api_key_id=${api_key_id} user_id=${user.id}`)
+        console.error(
+          `[ai-validate-agent] key_not_found api_key_id=${api_key_id} user_id=${user.id}`,
+        )
         results.openrouter = { ok: false, error: 'Chave de IA não encontrada' }
       } else {
         console.log(`[ai-validate-agent] testing openrouter model=${model_id} user=${user.id}`)
@@ -109,7 +116,7 @@ Deno.serve(async (req: Request) => {
         if (!results.openrouter.ok) {
           console.error(
             `[ai-validate-agent] OPENROUTER_FAIL user=${user.id} model=${model_id} ` +
-            `error="${results.openrouter.error}" detail="${results.openrouter.detail}"`,
+              `error="${results.openrouter.error}" detail="${results.openrouter.detail}"`,
           )
         } else {
           console.log(`[ai-validate-agent] openrouter_ok model=${model_id} user=${user.id}`)
@@ -131,7 +138,9 @@ Deno.serve(async (req: Request) => {
         .single()
 
       if (audioKeyErr || !audioKeyRow) {
-        console.error(`[ai-validate-agent] audio_key_not_found audio_api_key_id=${audio_api_key_id}`)
+        console.error(
+          `[ai-validate-agent] audio_key_not_found audio_api_key_id=${audio_api_key_id}`,
+        )
         results.assemblyai = { ok: false, error: 'Chave AssemblyAI não encontrada' }
       } else {
         console.log(`[ai-validate-agent] testing assemblyai user=${user.id}`)
@@ -139,10 +148,12 @@ Deno.serve(async (req: Request) => {
         if (!results.assemblyai.ok) {
           console.error(
             `[ai-validate-agent] ASSEMBLYAI_FAIL user=${user.id} ` +
-            `error="${results.assemblyai.error}" detail="${results.assemblyai.detail}"`,
+              `error="${results.assemblyai.error}" detail="${results.assemblyai.detail}"`,
           )
         } else {
-          console.log(`[ai-validate-agent] assemblyai_ok user=${user.id} ${results.assemblyai.detail ?? ''}`)
+          console.log(
+            `[ai-validate-agent] assemblyai_ok user=${user.id} ${results.assemblyai.detail ?? ''}`,
+          )
         }
       }
     }
