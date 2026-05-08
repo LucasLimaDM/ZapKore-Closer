@@ -27,7 +27,7 @@ export function VideoMessage({ msg, entry, request, fromMe }: VideoMessageProps)
   const blobUrl = entry?.blobUrl ?? null
 
   const handlePlayClick = () => {
-    if (status === 'idle') request(msg.message_id, msg.contact_id)
+    if (status === 'idle' || status === 'error') request(msg.message_id, msg.contact_id)
   }
 
   return (
@@ -51,7 +51,8 @@ export function VideoMessage({ msg, entry, request, fromMe }: VideoMessageProps)
             className={cn(
               'absolute inset-0 flex items-center justify-center',
               'bg-black/30',
-              status === 'idle' && 'cursor-pointer hover:bg-black/40 transition-colors',
+              (status === 'idle' || status === 'error') &&
+                'cursor-pointer hover:bg-black/40 transition-colors',
             )}
             onClick={handlePlayClick}
           >

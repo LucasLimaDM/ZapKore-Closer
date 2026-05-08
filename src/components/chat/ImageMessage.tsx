@@ -32,6 +32,12 @@ export function ImageMessage({ msg, entry, request, fromMe, onOpenLightbox }: Im
   const blobUrl = entry?.blobUrl ?? null
 
   useEffect(() => {
+    if (entry?.status === 'error') {
+      requested.current = false
+    }
+  }, [entry?.status])
+
+  useEffect(() => {
     const el = ref.current
     if (!el) return
     const observer = new IntersectionObserver(

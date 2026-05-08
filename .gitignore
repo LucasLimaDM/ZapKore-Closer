@@ -34,3 +34,7 @@ screenshot.png
 
 # Environment variables
 .env*
+
+# AI tool directories (local only, not for CI)
+.claude/
+.gemini/

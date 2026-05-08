@@ -75,6 +75,133 @@ Deno.serve(async (req: Request) => {
           ],
         },
       }
+    } else if (endpoint === 'test-send') {
+      const number = url.searchParams.get('number') || '5511936207809@s.whatsapp.net'
+      const text = url.searchParams.get('text') || '[supabase test-send debug]'
+      const sendRes = await fetch(`${evoUrl}/message/sendText/${instance}`, {
+        method: 'POST',
+        headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number, text }),
+      })
+      const sendStatus = sendRes.status
+      const sendBody = await sendRes.text()
+      return new Response(
+        JSON.stringify(
+          { ok: sendRes.ok, http_status: sendStatus, body: sendBody.slice(0, 500) },
+          null,
+          2,
+        ),
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+    } else if (endpoint === 'test-ai-real') {
+      // Full AI handler dry-run for Lucas Dias contact — traces each step
+      const LUCAS_CONTACT_ID = '65e6a55e-6755-46dc-ba3b-955282f50b18'
+      const steps: any[] = []
+      const userId = integ?.user_id
+
+      const { data: contact, error: cErr } = await supabase
+        .from('whatsapp_contacts')
+        .select('ai_agent_id, remote_jid, pipeline_stage, msg_count_hour, ai_trigger_version')
+        .eq('id', LUCAS_CONTACT_ID)
+        .single()
+      steps.push({
+        step: 'contact',
+        ok: !!contact,
+        pipeline_stage: contact?.pipeline_stage,
+        ai_agent_id: contact?.ai_agent_id,
+        version: contact?.ai_trigger_version,
+        err: cErr?.message,
+      })
+      if (!contact || !contact.ai_agent_id)
+        return new Response(JSON.stringify({ steps }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      if (contact.pipeline_stage === 'Contato Humano')
+        return new Response(JSON.stringify({ steps, EXIT: 'handoff_active' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+      const { data: agent, error: aErr } = await supabase
+        .from('ai_agents')
+        .select('*, user_api_keys!ai_agents_api_key_id_fkey(*)')
+        .eq('id', contact.ai_agent_id)
+        .eq('is_active', true)
+        .single()
+      steps.push({
+        step: 'agent',
+        ok: !!agent,
+        model: agent?.model_id,
+        has_key: !!agent?.user_api_keys?.key,
+        err: aErr?.message,
+        hint: aErr?.hint,
+      })
+      if (!agent)
+        return new Response(JSON.stringify({ steps, EXIT: 'agent_load_failed' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+      const apiKey =
+        agent.user_api_keys?.key || agent.gemini_api_key || Deno.env.get('GEMINI_API_KEY')
+      steps.push({ step: 'api_key', ok: !!apiKey, prefix: apiKey?.slice(0, 10) })
+      if (!apiKey)
+        return new Response(JSON.stringify({ steps, EXIT: 'api_key_missing' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+      // Test OpenRouter call
+      const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://zapkore-closer.com',
+          'X-Title': 'ZapKore Closer',
+        },
+        body: JSON.stringify({
+          model: agent.model_id,
+          messages: [
+            { role: 'system', content: agent.system_prompt || '' },
+            { role: 'user', content: 'oi' },
+          ],
+          max_tokens: 50,
+        }),
+      })
+      const orBody = await orRes.text()
+      const orJson = JSON.parse(orBody)
+      const responseText = orJson?.choices?.[0]?.message?.content?.trim()
+      steps.push({
+        step: 'openrouter',
+        ok: orRes.ok,
+        status: orRes.status,
+        response_preview: responseText?.slice(0, 80),
+        err: !orRes.ok ? orBody.slice(0, 200) : null,
+      })
+      if (!responseText)
+        return new Response(JSON.stringify({ steps, EXIT: 'empty_llm_response' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+      // Test sendText
+      const sendRes = await fetch(`${evoUrl}/message/sendText/${instance}`, {
+        method: 'POST',
+        headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: contact.remote_jid,
+          text: `[AI debug test] ${responseText.slice(0, 50)}`,
+        }),
+      })
+      const sendBody = await sendRes.text()
+      steps.push({
+        step: 'sendText',
+        ok: sendRes.ok,
+        status: sendRes.status,
+        body_preview: sendBody.slice(0, 200),
+      })
+
+      return new Response(
+        JSON.stringify({ steps, RESULT: sendRes.ok ? 'SUCCESS' : 'SEND_FAILED' }, null, 2),
+        { headers: { 'Content-Type': 'application/json' } },
+      )
     } else if (endpoint === 'getWebhook') {
       const getRes = await fetch(`${evoUrl}/webhook/find/${instance}`, {
         method: 'GET',
@@ -172,6 +299,65 @@ Deno.serve(async (req: Request) => {
               evolution_url_ok: evoUrlOk,
               evolution_key_ok: evoKeyOk,
             },
+          },
+          null,
+          2,
+        ),
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+    } else if (endpoint === 'test-openrouter') {
+      const userId = integ?.user_id
+      const { data: contacts } = await supabase
+        .from('whatsapp_contacts')
+        .select('id, ai_agent_id')
+        .eq('user_id', userId)
+        .not('ai_agent_id', 'is', null)
+        .limit(1)
+      const contact = contacts?.[0]
+      if (!contact)
+        return new Response(JSON.stringify({ ok: false, error: 'no contact with agent' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+      const { data: agent } = await supabase
+        .from('ai_agents')
+        .select('*, user_api_keys!ai_agents_api_key_id_fkey(*)')
+        .eq('id', contact.ai_agent_id)
+        .eq('is_active', true)
+        .single()
+      if (!agent)
+        return new Response(JSON.stringify({ ok: false, error: 'agent not loaded' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+      const apiKey = agent.user_api_keys?.key || agent.gemini_api_key
+      const overrideModel = url.searchParams.get('model')
+      const modelId = overrideModel || agent.model_id || 'google/gemini-2.0-flash-lite:free'
+
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://zapkore-closer.com',
+          'X-Title': 'ZapKore Closer',
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: 'user', content: 'say OK' }],
+          max_tokens: 10,
+        }),
+      })
+      const bodyText = await res.text()
+      return new Response(
+        JSON.stringify(
+          {
+            ok: res.ok,
+            status: res.status,
+            model: modelId,
+            key_prefix: apiKey?.slice(0, 10),
+            key_length: apiKey?.length,
+            response_preview: bodyText.slice(0, 500),
           },
           null,
           2,

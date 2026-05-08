@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import type { EmailOtpType } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 import { Loader2 } from 'lucide-react'
 
@@ -8,6 +9,19 @@ export default function AuthCallback() {
   const done = useRef(false)
 
   useEffect(() => {
+    // Handle token_hash links from Send Email Hook (query string, not fragment)
+    const params = new URLSearchParams(window.location.search)
+    const token_hash = params.get('token_hash')
+    const type = params.get('type') as EmailOtpType | null
+    if (token_hash && type) {
+      supabase.auth.verifyOtp({ token_hash, type }).then(({ error }) => {
+        if (done.current) return
+        done.current = true
+        navigate(error ? '/auth' : '/app', { replace: true })
+      })
+      return
+    }
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {

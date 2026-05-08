@@ -21,7 +21,6 @@ import { toast } from 'sonner'
 import { format, isToday, isYesterday } from 'date-fns'
 import { ptBR, enUS } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import { useAudioPreloader } from '@/hooks/use-audio-preloader'
 import { useMediaLoader } from '@/hooks/use-media-loader'
 import { AudioPlayer } from '@/components/chat/AudioPlayer'
 import { ImageMessage } from '@/components/chat/ImageMessage'
@@ -57,11 +56,12 @@ export default function Chat() {
   const loadMoreFnRef = useRef<() => void>(() => {})
   const isLoadingMoreRef = useRef(false)
   const isNearBottomRef = useRef(true)
+  const initialScrollDoneRef = useRef(false)
+  const PAGE_SIZE = 50
 
   const [hasMore, setHasMore] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
-  const audioMap = useAudioPreloader(messages)
   const { mediaMap, request } = useMediaLoader()
   const [lightbox, setLightbox] = useState<{ blobUrl: string; caption: string | null } | null>(null)
 
@@ -73,6 +73,8 @@ export default function Chat() {
 
   useEffect(() => {
     if (!user || !id) return
+
+    initialScrollDoneRef.current = false
 
     const fetchChat = async () => {
       const { data: contactData } = await supabase
@@ -88,16 +90,15 @@ export default function Chat() {
         .select('*')
         .eq('contact_id', id)
         .order('timestamp', { ascending: false })
-        .limit(200)
+        .limit(PAGE_SIZE)
 
       if (messagesData) {
         setMessages([...messagesData].reverse())
-        setHasMore(messagesData.length === 200)
+        setHasMore(messagesData.length === PAGE_SIZE)
       } else {
         setHasMore(false)
       }
       setLoading(false)
-      scrollToBottom()
     }
 
     fetchChat()
@@ -120,9 +121,14 @@ export default function Chat() {
               )
             }
             if (prev.find((m) => m.id === payload.new.id)) return prev
+
+            // Only scroll to bottom for NEW messages (INSERT)
+            if (payload.eventType === 'INSERT') {
+              setTimeout(scrollToBottom, 100)
+            }
+
             return [...prev, payload.new as WhatsAppMessage]
           })
-          scrollToBottom()
         },
       )
       .subscribe()
@@ -164,7 +170,7 @@ export default function Chat() {
         .eq('contact_id', id)
         .lt('timestamp', oldest)
         .order('timestamp', { ascending: false })
-        .limit(50)
+        .limit(PAGE_SIZE)
 
       if (data) {
         setMessages((prev) => {
@@ -172,7 +178,7 @@ export default function Chat() {
           const newMsgs = [...data].reverse().filter((m) => !existingIds.has(m.id))
           return [...newMsgs, ...prev]
         })
-        setHasMore(data.length === 50)
+        setHasMore(data.length === PAGE_SIZE)
       }
     } finally {
       isLoadingMoreRef.current = false
@@ -183,6 +189,16 @@ export default function Chat() {
   useEffect(() => {
     loadMoreFnRef.current = loadMoreMessages
   }, [loadMoreMessages])
+
+  useLayoutEffect(() => {
+    if (!initialScrollDoneRef.current && !loading && messages.length > 0) {
+      const container = messagesContainerRef.current
+      if (container) {
+        container.scrollTop = container.scrollHeight
+        initialScrollDoneRef.current = true
+      }
+    }
+  }, [loading, messages.length])
 
   useLayoutEffect(() => {
     if (prevScrollHeightRef.current > 0 && messagesContainerRef.current) {
@@ -502,10 +518,9 @@ export default function Chat() {
                       >
                         {msg.type === 'audioMessage' || msg.type === 'pttMessage' ? (
                           <AudioPlayer
-                            blobUrl={audioMap.get(msg.message_id)?.blobUrl ?? null}
-                            isLoading={
-                              (audioMap.get(msg.message_id)?.status ?? 'loading') === 'loading'
-                            }
+                            msg={msg}
+                            entry={mediaMap.get(msg.message_id)}
+                            request={request}
                             fromMe={msg.from_me}
                             transcript={msg.transcript}
                           />
