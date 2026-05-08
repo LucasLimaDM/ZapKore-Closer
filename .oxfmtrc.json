@@ -20,6 +20,8 @@
     "postcss.config.js",
     "README.md",
     "tests/",
+    ".claude/",
+    ".gemini/",
     "tsconfig.*",
     "vite.config.ts"
   ]

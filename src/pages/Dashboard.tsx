@@ -244,63 +244,63 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
         <Card>
-          <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
+          <CardContent className="p-5 md:p-6 flex flex-col justify-between h-full">
+            <div className="flex items-start justify-between mb-4 md:mb-6 gap-2">
+              <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-tight uppercase leading-tight">
                 {t('total_contacts')}
               </span>
-              <div className="bg-muted p-3 rounded-full text-foreground">
-                <Users className="h-5 w-5" />
+              <div className="bg-muted p-2 rounded-full text-foreground shrink-0">
+                <Users className="h-4 w-4" />
               </div>
             </div>
-            <div className="text-5xl font-bold tracking-tighter text-foreground">
+            <div className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tighter text-foreground">
               {loading ? '-' : totalContacts}
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
+          <CardContent className="p-5 md:p-6 flex flex-col justify-between h-full">
+            <div className="flex items-start justify-between mb-4 md:mb-6 gap-2">
+              <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-tight uppercase leading-tight">
                 {t('hot_leads')}
               </span>
-              <div className="bg-muted p-3 rounded-full text-foreground">
-                <Flame className="h-5 w-5" />
+              <div className="bg-muted p-2 rounded-full text-foreground shrink-0">
+                <Flame className="h-4 w-4" />
               </div>
             </div>
-            <div className="text-5xl font-bold tracking-tighter text-foreground">
+            <div className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tighter text-foreground">
               {loading ? '-' : hotLeads}
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
+          <CardContent className="p-5 md:p-6 flex flex-col justify-between h-full">
+            <div className="flex items-start justify-between mb-4 md:mb-6 gap-2">
+              <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-tight uppercase leading-tight">
                 {t('avg_score')}
               </span>
-              <div className="bg-muted p-3 rounded-full text-foreground">
-                <Activity className="h-5 w-5" />
+              <div className="bg-muted p-2 rounded-full text-foreground shrink-0">
+                <Activity className="h-4 w-4" />
               </div>
             </div>
-            <div className="text-5xl font-bold tracking-tighter text-foreground">
+            <div className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tighter text-foreground">
               {loading && contacts.length === 0 ? '-' : avgScore}
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6 md:p-8 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-sm font-semibold text-muted-foreground tracking-tight uppercase">
+          <CardContent className="p-5 md:p-6 flex flex-col justify-between h-full">
+            <div className="flex items-start justify-between mb-4 md:mb-6 gap-2">
+              <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-tight uppercase leading-tight">
                 {t('active_recently')}
               </span>
-              <div className="bg-muted p-3 rounded-full text-foreground">
-                <MessageSquare className="h-5 w-5" />
+              <div className="bg-muted p-2 rounded-full text-foreground shrink-0">
+                <MessageSquare className="h-4 w-4" />
               </div>
             </div>
-            <div className="text-5xl font-bold tracking-tighter text-foreground">
+            <div className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tighter text-foreground">
               {loading ? '-' : activeRecently}
             </div>
           </CardContent>

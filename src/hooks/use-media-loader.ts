@@ -33,33 +33,45 @@ export function useMediaLoader(): {
       activeRef.current++
 
       ;(async () => {
-        try {
-          const {
-            data: { session },
-          } = await supabase.auth.getSession()
-          const token = session?.access_token
-          if (!token) throw new Error('no token')
+        const MAX_RETRIES = 2
+        let attempt = 0
+        let succeeded = false
+        while (attempt <= MAX_RETRIES) {
+          try {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession()
+            const token = session?.access_token
+            if (!token) throw new Error('no token')
 
-          const res = await fetch(`${supabaseUrl}/functions/v1/evolution-get-media`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              apikey: supabaseAnonKey,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ messageId: item.messageId, contactId: item.contactId }),
-          })
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          const blob = await res.blob()
-          const blobUrl = URL.createObjectURL(blob)
-          mapRef.current.set(item.messageId, { status: 'ready', blobUrl })
-        } catch {
-          mapRef.current.set(item.messageId, { status: 'error', blobUrl: null })
-        } finally {
-          activeRef.current--
-          forceUpdate((n) => n + 1)
-          processQueue()
+            const res = await fetch(`${supabaseUrl}/functions/v1/evolution-get-media`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                apikey: supabaseAnonKey,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ messageId: item.messageId, contactId: item.contactId }),
+            })
+            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+            const blob = await res.blob()
+            const blobUrl = URL.createObjectURL(blob)
+            mapRef.current.set(item.messageId, { status: 'ready', blobUrl })
+            succeeded = true
+            break
+          } catch {
+            attempt++
+            if (attempt <= MAX_RETRIES) {
+              await new Promise((r) => setTimeout(r, attempt * 1000))
+            }
+          }
         }
+        if (!succeeded) {
+          mapRef.current.set(item.messageId, { status: 'error', blobUrl: null })
+        }
+        activeRef.current--
+        forceUpdate((n) => n + 1)
+        processQueue()
       })()
     }
   }, [])
@@ -67,7 +79,7 @@ export function useMediaLoader(): {
   const request = useCallback(
     (messageId: string, contactId: string) => {
       const current = mapRef.current.get(messageId)
-      if (current && current.status !== 'idle') return
+      if (current?.status === 'loading' || current?.status === 'ready') return
       mapRef.current.set(messageId, { status: 'loading', blobUrl: null })
       queueRef.current.push({ messageId, contactId })
       forceUpdate((n) => n + 1)
