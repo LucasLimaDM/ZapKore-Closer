@@ -296,6 +296,19 @@ export default function Chat() {
     }
   }
 
+  const handleDiscardDraft = async () => {
+    if (!contact) return
+    await supabase
+      .from('whatsapp_contacts')
+      .update({ draft_response: null, draft_updated_at: null })
+      .eq('id', contact.id)
+  }
+
+  const handleAcceptDraft = () => {
+    if (!contact?.draft_response) return
+    setNewMessage(contact.draft_response)
+  }
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newMessage.trim() || !contact) return
@@ -310,6 +323,13 @@ export default function Chat() {
       })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
+
+      if (contact.draft_response) {
+        await supabase
+          .from('whatsapp_contacts')
+          .update({ draft_response: null, draft_updated_at: null })
+          .eq('id', contact.id)
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to send message')
     } finally {
@@ -597,6 +617,32 @@ export default function Chat() {
 
         {/* Input */}
         <div className="p-3 sm:p-5 bg-background/50 backdrop-blur-xl border-t border-border/40 shrink-0 z-10">
+          {contact.draft_response && (
+            <div className="mb-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-primary mb-1">Sugestão da IA</p>
+                <p className="text-[13px] text-foreground/90 whitespace-pre-wrap break-words">
+                  {contact.draft_response}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAcceptDraft}
+                  className="mt-2 text-[11px] font-semibold text-primary hover:underline"
+                >
+                  Aceitar e editar
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                aria-label="Descartar sugestão"
+                className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <form onSubmit={handleSendMessage} className="flex gap-2.5 sm:gap-3 items-end">
             <div className="relative flex-1">
               <Input
