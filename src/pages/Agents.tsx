@@ -104,6 +104,13 @@ export default function Agents() {
   const [editingAgent, setEditingAgent] = useState<AIAgent | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isModelPopoverOpen, setIsModelPopoverOpen] = useState(false)
+  const [fallbacks, setFallbacks] = useState<string[]>([])
+  const [isFallbackPopoverOpen, setIsFallbackPopoverOpen] = useState<boolean[]>([
+    false,
+    false,
+    false,
+    false,
+  ])
 
   const [formData, setFormData] = useState({
     name: '',
@@ -115,6 +122,7 @@ export default function Agents() {
     memory_limit: 20,
     message_delay: 0,
     human_handoff_enabled: false,
+    draft_mode_enabled: false,
     is_active: true,
     is_default: false,
   })
@@ -174,9 +182,11 @@ export default function Agents() {
         memory_limit: agent.memory_limit ?? 20,
         message_delay: agent.message_delay ?? 0,
         human_handoff_enabled: agent.human_handoff_enabled ?? false,
+        draft_mode_enabled: agent.draft_mode_enabled ?? false,
         is_active: agent.is_active,
         is_default: agent.is_default || false,
       })
+      setFallbacks(agent.fallback_model_ids ?? [])
     } else {
       setEditingAgent(null)
       setFormData({
@@ -189,9 +199,11 @@ export default function Agents() {
         memory_limit: 20,
         message_delay: 0,
         human_handoff_enabled: false,
+        draft_mode_enabled: false,
         is_active: true,
         is_default: agents.length === 0,
       })
+      setFallbacks([])
     }
     setValidationErrors(null)
     setIsDialogOpen(true)
@@ -233,7 +245,11 @@ export default function Agents() {
 
     const audioKeyId =
       formData.audio_api_key_id === '__none__' ? null : formData.audio_api_key_id || null
-    const payload = { ...formData, audio_api_key_id: audioKeyId }
+    const payload = {
+      ...formData,
+      audio_api_key_id: audioKeyId,
+      fallback_model_ids: fallbacks.filter(Boolean),
+    }
 
     const needsValidation =
       !editingAgent ||
@@ -839,6 +855,93 @@ export default function Agents() {
                 </div>
               </div>
 
+              {/* Cascading fallback model slots */}
+              {Array.from({ length: Math.min(fallbacks.length + 1, 4) }).map((_, idx) => {
+                const isVisible = idx === 0 ? !!formData.model_id : !!fallbacks[idx - 1]
+                if (!isVisible) return null
+                return (
+                  <div key={idx} className="space-y-2">
+                    <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                      Fallback {idx + 1}
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={fallbacks[idx] ?? ''}
+                        onChange={(e) => {
+                          const next = [...fallbacks]
+                          next[idx] = e.target.value
+                          setFallbacks(next)
+                        }}
+                        placeholder="Modelo de fallback (ex: openai/gpt-4o-mini)"
+                        className="rounded-xl h-12 flex-1"
+                      />
+                      <Popover
+                        open={isFallbackPopoverOpen[idx]}
+                        onOpenChange={(open) => {
+                          const next = [...isFallbackPopoverOpen]
+                          next[idx] = open
+                          setIsFallbackPopoverOpen(next)
+                        }}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-12 w-12 p-0 rounded-xl shrink-0 border-border/60"
+                          >
+                            <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0 rounded-xl" align="end">
+                          <Command>
+                            <CommandInput placeholder="Buscar modelo..." />
+                            <CommandList>
+                              <CommandEmpty>Nenhum modelo encontrado.</CommandEmpty>
+                              <CommandGroup heading="Sugestões">
+                                {AI_MODELS.map((model) => (
+                                  <CommandItem
+                                    key={model.id}
+                                    value={model.id}
+                                    onSelect={() => {
+                                      const next = [...fallbacks]
+                                      next[idx] = model.id
+                                      setFallbacks(next)
+                                      const nextOpen = [...isFallbackPopoverOpen]
+                                      nextOpen[idx] = false
+                                      setIsFallbackPopoverOpen(nextOpen)
+                                    }}
+                                    className="rounded-lg"
+                                  >
+                                    <Check
+                                      className={cn(
+                                        'mr-2 h-4 w-4',
+                                        fallbacks[idx] === model.id ? 'opacity-100' : 'opacity-0',
+                                      )}
+                                    />
+                                    {model.name}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-12 w-12 p-0 rounded-xl shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          const next = fallbacks.filter((_, i) => i !== idx)
+                          setFallbacks(next)
+                        }}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+
               <div className="space-y-3">
                 <Label
                   htmlFor="memory_limit"
@@ -918,6 +1021,25 @@ export default function Agents() {
                     da tag.
                   </p>
                 )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label className="font-semibold">Modo Rascunho</Label>
+                    <p className="text-[11px] text-muted-foreground font-medium">
+                      Em vez de enviar automaticamente, a IA gera um rascunho que aparece como
+                      sugestão no campo de resposta do chat. O operador revisa, edita e envia
+                      manualmente.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.draft_mode_enabled}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, draft_mode_enabled: checked })
+                    }
+                  />
+                </div>
               </div>
 
               <div className="space-y-3">
