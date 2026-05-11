@@ -9,7 +9,7 @@ Add a per-agent toggle that switches the AI from auto-sending replies to produci
 
 ## Motivation
 
-Today every agent reply is sent automatically to the customer. For high-stakes or sensitive conversations, operators want the AI to *propose* a reply they can vet before it goes out. Toggle keeps the workflow opt-in per agent — no behavior change for existing agents.
+Today every agent reply is sent automatically to the customer. For high-stakes or sensitive conversations, operators want the AI to _propose_ a reply they can vet before it goes out. Toggle keeps the workflow opt-in per agent — no behavior change for existing agents.
 
 ## User-facing behavior
 
@@ -63,16 +63,21 @@ if (agent.draft_mode_enabled) {
     })
     .eq('id', contactId)
   if (draftErr) {
-    console.error(`[AI Handler] EXIT draft_save_failed contactId=${contactId} code=${draftErr.code} message=${draftErr.message}`)
+    console.error(
+      `[AI Handler] EXIT draft_save_failed contactId=${contactId} code=${draftErr.code} message=${draftErr.message}`,
+    )
     return
   }
-  console.log(`[AI Handler] DRAFT_SAVED contactId=${contactId} len=${cleanText.length} total_elapsed=${elapsed()}`)
+  console.log(
+    `[AI Handler] DRAFT_SAVED contactId=${contactId} len=${cleanText.length} total_elapsed=${elapsed()}`,
+  )
   return
 }
 // existing sendText flow continues unchanged below
 ```
 
 Reused-as-is (no change needed):
+
 - `pipeline_stage === 'Contato Humano'` guard (line ~73) — stops draft generation after handoff.
 - `message_delay` debounce + `ai_trigger_version` checks (lines ~178-206, ~409-420) — new inbound message during delay cancels in-flight draft.
 - Memory limit, model fallback chain, system prompt, handoff instruction injection — all apply identically.
@@ -90,18 +95,27 @@ Add a `Switch` for `draft_mode_enabled` adjacent to the existing `human_handoff_
 1. **Fetch contact with new fields** — include `draft_response, draft_updated_at` in contact fetch.
 
 2. **Realtime subscription** — new channel:
+
    ```typescript
    supabase
      .channel(`contact-draft:${contactId}`)
-     .on('postgres_changes',
-       { event: 'UPDATE', schema: 'public', table: 'whatsapp_contacts', filter: `id=eq.${contactId}` },
-       (payload) => setContact(prev => ({ ...prev, ...payload.new }))
+     .on(
+       'postgres_changes',
+       {
+         event: 'UPDATE',
+         schema: 'public',
+         table: 'whatsapp_contacts',
+         filter: `id=eq.${contactId}`,
+       },
+       (payload) => setContact((prev) => ({ ...prev, ...payload.new })),
      )
      .subscribe()
    ```
+
    Unsubscribe on contact change / unmount. Same pattern as existing `whatsapp_messages` subscription.
 
 3. **Suggestion UI** — above the message input row, render when `contact.draft_response` is non-null:
+
    ```
    ┌────────────────────────────────────────────────┐
    │ 💡 Sugestão da IA                          ✕  │
@@ -109,6 +123,7 @@ Add a `Switch` for `draft_mode_enabled` adjacent to the existing `human_handoff_
    │ [Aceitar e editar]                             │
    └────────────────────────────────────────────────┘
    ```
+
    - **Aceitar e editar** → `setNewMessage(contact.draft_response)`. Suggestion chip stays visible (doesn't clear) until message actually sent.
    - **✕ Descartar** → UPDATE `whatsapp_contacts SET draft_response=NULL, draft_updated_at=NULL WHERE id=contactId`. Realtime propagates → chip disappears.
 
@@ -129,16 +144,16 @@ Add a `Switch` for `draft_mode_enabled` adjacent to the existing `human_handoff_
 
 ## Edge cases
 
-| Case | Behavior |
-|---|---|
-| Customer sends 2nd message during delay | `ai_trigger_version` cancels in-flight draft, regenerates with full new history. Previous draft (if already saved) overwritten by new run. |
-| Operator types own text while draft active | Suggestion chip stays visible; input is independent. Operator can ignore or click Aceitar to replace. |
-| Operator sends manual text (not the draft) | Send succeeds, draft column cleared (per design — any send clears). |
-| Operator switches contact | Draft persists in DB; reappears on return. |
-| Pipeline → `Contato Humano` | Existing guard prevents new drafts. Stale draft on column stays until operator clears or sends. |
-| Agent toggle turned OFF after drafts exist | Stale drafts remain on contacts until cleared. Future inbound messages take normal auto-send path. |
-| Handoff tag `<transferir_humano>` in draft mode | Skip draft save, set `pipeline_stage = 'Contato Humano'`. Operator manually addresses customer. |
-| Rate-limit hit (msg/hour) in draft mode | Existing rate-limit branch runs **before** draft branch — sends rate-limit message + sets handoff. Draft mode does not apply when rate-limited (consistent with auto-send behavior). |
+| Case                                            | Behavior                                                                                                                                                                             |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Customer sends 2nd message during delay         | `ai_trigger_version` cancels in-flight draft, regenerates with full new history. Previous draft (if already saved) overwritten by new run.                                           |
+| Operator types own text while draft active      | Suggestion chip stays visible; input is independent. Operator can ignore or click Aceitar to replace.                                                                                |
+| Operator sends manual text (not the draft)      | Send succeeds, draft column cleared (per design — any send clears).                                                                                                                  |
+| Operator switches contact                       | Draft persists in DB; reappears on return.                                                                                                                                           |
+| Pipeline → `Contato Humano`                     | Existing guard prevents new drafts. Stale draft on column stays until operator clears or sends.                                                                                      |
+| Agent toggle turned OFF after drafts exist      | Stale drafts remain on contacts until cleared. Future inbound messages take normal auto-send path.                                                                                   |
+| Handoff tag `<transferir_humano>` in draft mode | Skip draft save, set `pipeline_stage = 'Contato Humano'`. Operator manually addresses customer.                                                                                      |
+| Rate-limit hit (msg/hour) in draft mode         | Existing rate-limit branch runs **before** draft branch — sends rate-limit message + sets handoff. Draft mode does not apply when rate-limited (consistent with auto-send behavior). |
 
 ## Out of scope (YAGNI)
 
