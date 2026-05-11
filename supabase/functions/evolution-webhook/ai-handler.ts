@@ -419,6 +419,48 @@ export async function processAiResponse(
       return
     }
 
+    if (agent.draft_mode_enabled) {
+      if (handoffDetected) {
+        const { error: handoffStageErr } = await supabase
+          .from('whatsapp_contacts')
+          .update({
+            pipeline_stage: 'Contato Humano',
+            draft_response: null,
+            draft_updated_at: null,
+          })
+          .eq('id', contactId)
+        if (handoffStageErr) {
+          console.error(
+            `[AI Handler] WARN draft_handoff_update_failed contactId=${contactId} supabase_message=${handoffStageErr.message}`,
+          )
+        }
+        console.log(
+          `[AI Handler] DRAFT_SKIPPED_FOR_HANDOFF contactId=${contactId} total_elapsed=${elapsed()}`,
+        )
+        return
+      }
+
+      const { error: draftErr } = await supabase
+        .from('whatsapp_contacts')
+        .update({
+          draft_response: cleanText,
+          draft_updated_at: new Date().toISOString(),
+        })
+        .eq('id', contactId)
+
+      if (draftErr) {
+        console.error(
+          `[AI Handler] EXIT draft_save_failed contactId=${contactId} supabase_code=${draftErr.code} supabase_message=${draftErr.message}`,
+        )
+        return
+      }
+
+      console.log(
+        `[AI Handler] DRAFT_SAVED contactId=${contactId} len=${cleanText.length} total_elapsed=${elapsed()}`,
+      )
+      return
+    }
+
     if (handoffDetected) {
       const { error: handoffStageErr } = await supabase
         .from('whatsapp_contacts')
