@@ -103,9 +103,27 @@ Deno.serve(async (req: Request) => {
         const protoType = update?.message?.protocolMessage?.type
         const stub = update?.messageStubType
         const isRevoke = protoType === 0 || stub === 'REVOKE' || stub === 1 || stub === 68 // Baileys REVOKE stub types
-        if (!isRevoke) continue
+        const isEdit = protoType === 14
         const mid = e?.key?.id || e?.keyId || e?.messageId || update?.key?.id
-        if (mid) await markRevoked(mid)
+        if (isRevoke) {
+          if (mid) await markRevoked(mid)
+        } else if (isEdit && mid) {
+          const proto = update.message.protocolMessage
+          const editedText =
+            proto?.editedMessage?.conversation ||
+            proto?.editedMessage?.extendedTextMessage?.text ||
+            null
+          const { error } = await supabase
+            .from('whatsapp_messages')
+            .update({ type: 'protocolMessage', text: editedText, raw: update })
+            .eq('user_id', userId)
+            .eq('message_id', mid)
+          if (error) {
+            console.error(`[WEBHOOK] Error marking ${mid} as edited:`, error)
+          } else {
+            console.log(`[WEBHOOK] Marked message ${mid} as edited`)
+          }
+        }
       }
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
@@ -190,6 +208,12 @@ Deno.serve(async (req: Request) => {
         type = Object.keys(content).filter((k: string) => k !== 'messageContextInfo')[0] || 'text'
       } else if (msgObj.text) {
         text = msgObj.text
+      }
+
+      const SILENT_TYPES = new Set(['albumMessage', 'associatedChildMessage', 'placeholderMessage', 'secretEncryptedMessage'])
+      if (SILENT_TYPES.has(type)) {
+        console.log(`[WEBHOOK] Ignored silent message type=${type} messageId=${messageId}`)
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
 
       const ts = msgObj.messageTimestamp || msgObj.timestamp
@@ -359,6 +383,65 @@ Deno.serve(async (req: Request) => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
+      }
+
+      // Edit (message edited on WhatsApp via protocolMessage type 14 arriving as upsert).
+      if (
+        contact &&
+        type === 'protocolMessage' &&
+        content?.protocolMessage?.type === 14 &&
+        content?.protocolMessage?.key?.id
+      ) {
+        const editedId = content.protocolMessage.key.id
+        const proto = content.protocolMessage
+        const editedText =
+          proto?.editedMessage?.conversation ||
+          proto?.editedMessage?.extendedTextMessage?.text ||
+          null
+        const { error: editErr } = await supabase
+          .from('whatsapp_messages')
+          .update({ type: 'protocolMessage', text: editedText, raw: msgObj })
+          .eq('user_id', userId)
+          .eq('message_id', editedId)
+
+        if (editErr) {
+          console.error(`[WEBHOOK] Error marking ${editedId} as edited:`, editErr)
+        } else {
+          console.log(`[WEBHOOK] Marked message ${editedId} as edited`)
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      // Edit arriving as upsert with editedMessage wrapper (alternate Evolution API format).
+      if (contact && type === 'editedMessage') {
+        const innerProto = content?.editedMessage?.message?.protocolMessage
+        const editedId = innerProto?.key?.id || content?.editedMessage?.key?.id
+        const editedText =
+          innerProto?.editedMessage?.conversation ||
+          innerProto?.editedMessage?.extendedTextMessage?.text ||
+          null
+        if (editedId) {
+          const { error: editErr } = await supabase
+            .from('whatsapp_messages')
+            .update({ type: 'protocolMessage', text: editedText, raw: msgObj })
+            .eq('user_id', userId)
+            .eq('message_id', editedId)
+
+          if (editErr) {
+            console.error(`[WEBHOOK] Error marking ${editedId} as edited (editedMessage):`, editErr)
+          } else {
+            console.log(`[WEBHOOK] Marked message ${editedId} as edited (editedMessage)`)
+          }
+
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
       }
 
       if (contact && messageId) {

@@ -81,6 +81,7 @@ export const SILENT_MESSAGE_TYPES = new Set([
   'albumMessage',
   'associatedChildMessage',
   'placeholderMessage',
+  'secretEncryptedMessage',
 ])
 
 // Sentinel string the webhook stores when it can't extract readable text from a message.

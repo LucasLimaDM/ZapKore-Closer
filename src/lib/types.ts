@@ -37,9 +37,11 @@ export interface AIAgent {
   api_key_id: string | null
   audio_api_key_id: string | null
   model_id: string
+  fallback_model_ids: string[]
   memory_limit: number
   message_delay: number
   human_handoff_enabled: boolean
+  draft_mode_enabled: boolean
   is_active: boolean
   is_default?: boolean
   created_at: string
@@ -62,6 +64,8 @@ export interface WhatsAppContact {
   custom_name?: string | null
   custom_phone?: string | null
   created_at: string
+  draft_response?: string | null
+  draft_updated_at?: string | null
 }
 
 export interface WhatsAppMessage {

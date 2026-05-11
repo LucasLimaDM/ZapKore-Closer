@@ -228,7 +228,9 @@ export async function processAiResponse(
       : ''
     const effectiveSystemPrompt = HANDOFF_INSTRUCTION + (agent.system_prompt || '')
 
-    const modelId = agent.model_id
+    const modelChain = [agent.model_id, ...(agent.fallback_model_ids ?? [])].filter(
+      Boolean,
+    ) as string[]
     const memoryLimit = agent.memory_limit ?? 20
 
     // Over-fetch so filtered-out messages (media without caption, deleted) don't shrink context.
@@ -294,6 +296,9 @@ export async function processAiResponse(
       return
     }
 
+    // messages fetched descending — [0] is most recent. Capture before reverse().
+    const lastMsgTimestamp = messages[0]?.timestamp ?? null
+
     const AUDIO_FALLBACK =
       '[Áudio recebido. Você ainda não consegue transcrever áudios - informe o cliente.]'
 
@@ -316,7 +321,7 @@ export async function processAiResponse(
     const userMsgs = history.filter((m) => m.role === 'user').length
     const assistantMsgs = history.filter((m) => m.role === 'assistant').length
     console.log(
-      `[AI Handler] openrouter_call_start model=${modelId} history_len=${history.length} user_msgs=${userMsgs} assistant_msgs=${assistantMsgs} fetched=${messages.length} elapsed=${elapsed()}`,
+      `[AI Handler] openrouter_call_start model_chain=${modelChain.join(',')} history_len=${history.length} user_msgs=${userMsgs} assistant_msgs=${assistantMsgs} fetched=${messages.length} elapsed=${elapsed()}`,
     )
 
     const openai = new OpenAI({
@@ -329,30 +334,36 @@ export async function processAiResponse(
     })
 
     let completion
-    try {
-      completion = await openai.chat.completions.create({
-        model: modelId,
-        messages: [{ role: 'system', content: effectiveSystemPrompt }, ...history],
-        temperature: 0.7,
-        max_tokens: 800,
-      })
-      console.log(
-        `[AI Handler] openrouter_ok model=${modelId} finish_reason=${completion.choices[0]?.finish_reason} ` +
-          `prompt_tokens=${completion.usage?.prompt_tokens} completion_tokens=${completion.usage?.completion_tokens} elapsed=${elapsed()}`,
-      )
-    } catch (openrouterErr: any) {
-      // Capture full OpenRouter error including provider metadata
-      const errBody = openrouterErr?.error ?? openrouterErr?.response?.data ?? null
-      const providerName =
-        errBody?.metadata?.provider_name ?? openrouterErr?.metadata?.provider_name ?? 'unknown'
-      const rawMsg = errBody?.metadata?.raw ?? openrouterErr?.metadata?.raw ?? ''
-      console.error(
-        `[AI Handler] EXIT openrouter_error model=${modelId} ` +
-          `http_status=${openrouterErr?.status ?? 'none'} code=${openrouterErr?.code ?? 'none'} ` +
-          `message="${openrouterErr?.message}" provider=${providerName} provider_raw="${rawMsg}" ` +
-          `full_error=${JSON.stringify(errBody ?? { message: openrouterErr?.message })} elapsed=${elapsed()}`,
-      )
-      return
+    let modelId = ''
+    for (const candidateModel of modelChain) {
+      try {
+        completion = await openai.chat.completions.create({
+          model: candidateModel,
+          messages: [{ role: 'system', content: effectiveSystemPrompt }, ...history],
+          temperature: 0.7,
+          max_tokens: 800,
+        })
+        modelId = candidateModel
+        console.log(
+          `[AI Handler] openrouter_ok model=${candidateModel} finish_reason=${completion.choices[0]?.finish_reason} ` +
+            `prompt_tokens=${completion.usage?.prompt_tokens} completion_tokens=${completion.usage?.completion_tokens} elapsed=${elapsed()}`,
+        )
+        break
+      } catch (openrouterErr: any) {
+        const errBody = openrouterErr?.error ?? openrouterErr?.response?.data ?? null
+        const providerName =
+          errBody?.metadata?.provider_name ?? openrouterErr?.metadata?.provider_name ?? 'unknown'
+        const rawMsg = errBody?.metadata?.raw ?? openrouterErr?.metadata?.raw ?? ''
+        const isLast = candidateModel === modelChain.at(-1)
+        console.error(
+          `[AI Handler] ${isLast ? 'EXIT' : 'WARN'} openrouter_error model=${candidateModel} ` +
+            `http_status=${openrouterErr?.status ?? 'none'} code=${openrouterErr?.code ?? 'none'} ` +
+            `message="${openrouterErr?.message}" provider=${providerName} provider_raw="${rawMsg}" ` +
+            `full_error=${JSON.stringify(errBody ?? { message: openrouterErr?.message })} elapsed=${elapsed()}` +
+            (isLast ? '' : ' — trying next fallback'),
+        )
+        if (isLast) return
+      }
     }
 
     const responseText = completion.choices[0]?.message?.content?.trim()
@@ -408,6 +419,48 @@ export async function processAiResponse(
       return
     }
 
+    if (agent.draft_mode_enabled) {
+      if (handoffDetected) {
+        const { error: handoffStageErr } = await supabase
+          .from('whatsapp_contacts')
+          .update({
+            pipeline_stage: 'Contato Humano',
+            draft_response: null,
+            draft_updated_at: null,
+          })
+          .eq('id', contactId)
+        if (handoffStageErr) {
+          console.error(
+            `[AI Handler] WARN draft_handoff_update_failed contactId=${contactId} supabase_message=${handoffStageErr.message}`,
+          )
+        }
+        console.log(
+          `[AI Handler] DRAFT_SKIPPED_FOR_HANDOFF contactId=${contactId} total_elapsed=${elapsed()}`,
+        )
+        return
+      }
+
+      const { error: draftErr } = await supabase
+        .from('whatsapp_contacts')
+        .update({
+          draft_response: cleanText,
+          draft_updated_at: new Date().toISOString(),
+        })
+        .eq('id', contactId)
+
+      if (draftErr) {
+        console.error(
+          `[AI Handler] EXIT draft_save_failed contactId=${contactId} supabase_code=${draftErr.code} supabase_message=${draftErr.message}`,
+        )
+        return
+      }
+
+      console.log(
+        `[AI Handler] DRAFT_SAVED contactId=${contactId} len=${cleanText.length} total_elapsed=${elapsed()}`,
+      )
+      return
+    }
+
     if (handoffDetected) {
       const { error: handoffStageErr } = await supabase
         .from('whatsapp_contacts')
@@ -421,6 +474,9 @@ export async function processAiResponse(
         console.log(`[AI Handler] handoff_stage_set contactId=${contactId}`)
       }
     }
+
+    const textToSend =
+      integration.captions_enabled && agent.name ? `*[${agent.name}]*\n${cleanText}` : cleanText
 
     console.log(
       `[AI Handler] send_start dest=${contact.remote_jid} instance=${integration.instance_name} elapsed=${elapsed()}`,
