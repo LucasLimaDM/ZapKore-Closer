@@ -133,6 +133,24 @@ export default function Chat() {
       )
       .subscribe()
 
+    const contactChannel = supabase
+      .channel(`contact_${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'whatsapp_contacts',
+          filter: `id=eq.${id}`,
+        },
+        (payload) => {
+          setContact((prev) =>
+            prev ? { ...prev, ...(payload.new as Partial<WhatsAppContact>) } : prev,
+          )
+        },
+      )
+      .subscribe()
+
     const container = messagesContainerRef.current
     const handleScroll = () => {
       if (!container) return
@@ -144,6 +162,7 @@ export default function Chat() {
 
     return () => {
       supabase.removeChannel(channel)
+      supabase.removeChannel(contactChannel)
       if (container) container.removeEventListener('scroll', handleScroll)
     }
   }, [user, id])
