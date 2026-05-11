@@ -210,10 +210,18 @@ Deno.serve(async (req: Request) => {
         text = msgObj.text
       }
 
-      const SILENT_TYPES = new Set(['albumMessage', 'associatedChildMessage', 'placeholderMessage', 'secretEncryptedMessage'])
+      const SILENT_TYPES = new Set([
+        'albumMessage',
+        'associatedChildMessage',
+        'placeholderMessage',
+        'secretEncryptedMessage',
+      ])
       if (SILENT_TYPES.has(type)) {
         console.log(`[WEBHOOK] Ignored silent message type=${type} messageId=${messageId}`)
-        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       const ts = msgObj.messageTimestamp || msgObj.timestamp
