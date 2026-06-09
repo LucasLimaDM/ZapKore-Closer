@@ -35,6 +35,7 @@ export default function Settings() {
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
 
+  const [currentProvider, setCurrentProvider] = useState<'evolution' | 'zapi'>('evolution')
   const [credUrl, setCredUrl] = useState<string | null>(null)
   const [credMasked, setCredMasked] = useState<string | null>(null)
   const [credLoading, setCredLoading] = useState(true)
@@ -42,6 +43,14 @@ export default function Settings() {
   const [editUrl, setEditUrl] = useState('')
   const [editKey, setEditKey] = useState('')
   const [savingCreds, setSavingCreds] = useState(false)
+  const [zapiInstanceId, setZapiInstanceId] = useState<string | null>(null)
+  const [zapiTokenMasked, setZapiTokenMasked] = useState<string | null>(null)
+  const [zapiClientTokenMasked, setZapiClientTokenMasked] = useState<string | null>(null)
+  const [editingZapi, setEditingZapi] = useState(false)
+  const [editZapiId, setEditZapiId] = useState('')
+  const [editZapiToken, setEditZapiToken] = useState('')
+  const [editZapiClientToken, setEditZapiClientToken] = useState('')
+  const [savingZapi, setSavingZapi] = useState(false)
   const [captionsEnabled, setCaptionsEnabled] = useState(false)
   const [userDisplayName, setUserDisplayName] = useState('')
   const [savingCaptions, setSavingCaptions] = useState(false)
@@ -78,8 +87,12 @@ export default function Settings() {
           body: { action: 'get' },
         })
         if (!error && data) {
+          setCurrentProvider(data.provider ?? 'evolution')
           setCredUrl(data.url)
           setCredMasked(data.api_key_masked)
+          setZapiInstanceId(data.zapi_instance_id)
+          setZapiTokenMasked(data.zapi_instance_token_masked)
+          setZapiClientTokenMasked(data.zapi_client_token_masked)
         }
       } finally {
         setCredLoading(false)
@@ -99,6 +112,7 @@ export default function Settings() {
         body: { action: 'save', url: editUrl.trim(), api_key: editKey.trim() },
       })
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao salvar')
+      setCurrentProvider('evolution')
       setCredUrl(data.url)
       setCredMasked(data.api_key_masked)
       setEditingCreds(false)
@@ -116,6 +130,45 @@ export default function Settings() {
     setEditingCreds(false)
     setEditUrl('')
     setEditKey('')
+  }
+
+  const handleSaveZapi = async () => {
+    if (!editZapiId.trim() || !editZapiToken.trim() || !editZapiClientToken.trim()) {
+      toast.error('Instance ID, Instance Token e Client Token são obrigatórios')
+      return
+    }
+    setSavingZapi(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('evolution-credentials', {
+        body: {
+          action: 'save_zapi',
+          zapi_instance_id: editZapiId.trim(),
+          zapi_instance_token: editZapiToken.trim(),
+          zapi_client_token: editZapiClientToken.trim(),
+        },
+      })
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao salvar')
+      setCurrentProvider('zapi')
+      setZapiInstanceId(data.zapi_instance_id)
+      setZapiTokenMasked(data.zapi_instance_token_masked)
+      setZapiClientTokenMasked(data.zapi_client_token_masked)
+      setEditingZapi(false)
+      setEditZapiId('')
+      setEditZapiToken('')
+      setEditZapiClientToken('')
+      toast.success('Credenciais Z-API salvas com sucesso')
+    } catch (e: any) {
+      toast.error(e.message || 'Credenciais inválidas. Verifique os dados Z-API.')
+    } finally {
+      setSavingZapi(false)
+    }
+  }
+
+  const handleCancelZapi = () => {
+    setEditingZapi(false)
+    setEditZapiId('')
+    setEditZapiToken('')
+    setEditZapiClientToken('')
   }
 
   const handleSaveCaptions = async () => {
@@ -240,103 +293,215 @@ export default function Settings() {
       </div>
 
       <div className="space-y-6">
-        {/* Evolution API Credentials Card */}
+        {/* WhatsApp Provider Credentials Card */}
         <Card className="shadow-subtle border border-border/40 rounded-[2rem] bg-card overflow-hidden">
           <CardHeader className="pb-4 pt-8 px-8">
             <CardTitle className="flex items-center gap-3 text-xl tracking-tight">
               <div className="bg-primary/10 text-primary p-2.5 rounded-2xl">
                 <KeyRound className="h-5 w-5" />
               </div>
-              Evolution API
+              Provedor WhatsApp
             </CardTitle>
             <CardDescription className="font-medium text-sm text-muted-foreground max-w-sm">
-              URL e credenciais da sua instância Evolution API
+              Credenciais da sua instância WhatsApp
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="px-8 pb-8 space-y-4">
+          <CardContent className="px-8 pb-8 space-y-6">
             {credLoading ? (
               <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
-            ) : editingCreds ? (
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="settings-evo-url">URL da Evolution API</Label>
-                  <Input
-                    id="settings-evo-url"
-                    type="url"
-                    placeholder="https://api.seudominio.com"
-                    value={editUrl}
-                    onChange={(e) => setEditUrl(e.target.value)}
-                    disabled={savingCreds}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="settings-evo-key">API Key</Label>
-                  <Input
-                    id="settings-evo-key"
-                    type="password"
-                    placeholder="Nova API Key"
-                    value={editKey}
-                    onChange={(e) => setEditKey(e.target.value)}
-                    disabled={savingCreds}
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleSaveCreds}
-                    disabled={savingCreds}
-                    className="rounded-full px-6 h-10 font-semibold"
-                  >
-                    {savingCreds ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
-                      </>
-                    ) : (
-                      'Salvar'
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleCancelEdit}
-                    disabled={savingCreds}
-                    className="rounded-full px-6 h-10 font-semibold"
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </div>
             ) : (
-              <div className="space-y-3">
-                <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 flex flex-col gap-3">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      URL
-                    </span>
-                    <span className="text-sm font-medium text-foreground truncate">
-                      {credUrl || (
-                        <span className="text-muted-foreground italic">Não configurado</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      API Key
-                    </span>
-                    <span className="text-sm font-mono font-medium text-foreground">
-                      {credMasked || (
-                        <span className="text-muted-foreground italic">Não configurado</span>
-                      )}
-                    </span>
-                  </div>
+              <>
+                {/* Provider Toggle */}
+                <div className="flex gap-2 p-1 bg-muted/50 rounded-full w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentProvider('evolution')}
+                    className={cn(
+                      'px-4 py-1.5 rounded-full text-sm font-semibold transition-all',
+                      currentProvider === 'evolution'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    Evolution API
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentProvider('zapi')}
+                    className={cn(
+                      'px-4 py-1.5 rounded-full text-sm font-semibold transition-all',
+                      currentProvider === 'zapi'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    Z-API
+                  </button>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setEditingCreds(true)}
-                  className="rounded-full px-6 h-10 font-semibold"
-                >
-                  Editar
-                </Button>
-              </div>
+
+                {/* Evolution Section */}
+                {currentProvider === 'evolution' && (
+                  editingCreds ? (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="settings-evo-url">URL da Evolution API</Label>
+                        <Input
+                          id="settings-evo-url"
+                          type="url"
+                          placeholder="https://api.seudominio.com"
+                          value={editUrl}
+                          onChange={(e) => setEditUrl(e.target.value)}
+                          disabled={savingCreds}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="settings-evo-key">API Key</Label>
+                        <Input
+                          id="settings-evo-key"
+                          type="password"
+                          placeholder="Nova API Key"
+                          value={editKey}
+                          onChange={(e) => setEditKey(e.target.value)}
+                          disabled={savingCreds}
+                        />
+                      </div>
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={handleSaveCreds}
+                          disabled={savingCreds}
+                          className="rounded-full px-6 h-10 font-semibold"
+                        >
+                          {savingCreds ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...</>
+                          ) : 'Salvar'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleCancelEdit}
+                          disabled={savingCreds}
+                          className="rounded-full px-6 h-10 font-semibold"
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">URL</span>
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {credUrl || <span className="text-muted-foreground italic">Não configurado</span>}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">API Key</span>
+                          <span className="text-sm font-mono font-medium text-foreground">
+                            {credMasked || <span className="text-muted-foreground italic">Não configurado</span>}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => setEditingCreds(true)}
+                        className="rounded-full px-6 h-10 font-semibold"
+                      >
+                        Editar
+                      </Button>
+                    </div>
+                  )
+                )}
+
+                {/* Z-API Section */}
+                {currentProvider === 'zapi' && (
+                  editingZapi ? (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="settings-zapi-id">Instance ID</Label>
+                        <Input
+                          id="settings-zapi-id"
+                          placeholder="Ex: 3D8F2A1B..."
+                          value={editZapiId}
+                          onChange={(e) => setEditZapiId(e.target.value)}
+                          disabled={savingZapi}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="settings-zapi-token">Instance Token</Label>
+                        <Input
+                          id="settings-zapi-token"
+                          type="password"
+                          placeholder="Token da instância"
+                          value={editZapiToken}
+                          onChange={(e) => setEditZapiToken(e.target.value)}
+                          disabled={savingZapi}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="settings-zapi-client-token">Client Token</Label>
+                        <Input
+                          id="settings-zapi-client-token"
+                          type="password"
+                          placeholder="Client token da conta"
+                          value={editZapiClientToken}
+                          onChange={(e) => setEditZapiClientToken(e.target.value)}
+                          disabled={savingZapi}
+                        />
+                      </div>
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={handleSaveZapi}
+                          disabled={savingZapi}
+                          className="rounded-full px-6 h-10 font-semibold"
+                        >
+                          {savingZapi ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...</>
+                          ) : 'Salvar'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleCancelZapi}
+                          disabled={savingZapi}
+                          className="rounded-full px-6 h-10 font-semibold"
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Instance ID</span>
+                          <span className="text-sm font-mono font-medium text-foreground">
+                            {zapiInstanceId || <span className="text-muted-foreground italic">Não configurado</span>}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Instance Token</span>
+                          <span className="text-sm font-mono font-medium text-foreground">
+                            {zapiTokenMasked || <span className="text-muted-foreground italic">Não configurado</span>}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Client Token</span>
+                          <span className="text-sm font-mono font-medium text-foreground">
+                            {zapiClientTokenMasked || <span className="text-muted-foreground italic">Não configurado</span>}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => setEditingZapi(true)}
+                        className="rounded-full px-6 h-10 font-semibold"
+                      >
+                        Editar
+                      </Button>
+                    </div>
+                  )
+                )}
+              </>
             )}
           </CardContent>
         </Card>

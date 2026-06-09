@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { transcribeAudio } from '../evolution-webhook/assemblyai.ts'
+import { getProvider } from '../_shared/providers/factory.ts'
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight
@@ -49,7 +50,7 @@ Deno.serve(async (req: Request) => {
     // Check if transcript already exists
     const { data: existingMsg } = await supabase
       .from('whatsapp_messages')
-      .select('transcript')
+      .select('transcript, raw')
       .eq('message_id', messageId)
       .eq('user_id', user.id)
       .single()
@@ -63,18 +64,16 @@ Deno.serve(async (req: Request) => {
 
     const { data: integ, error: integError } = await supabase
       .from('user_integrations')
-      .select('evolution_api_url, evolution_api_key, instance_name')
+      .select('*')
       .eq('user_id', user.id)
       .single()
 
-    if (integError || !integ?.evolution_api_url || !integ?.instance_name) {
+    if (integError || !integ) {
       console.error('[Transcribe Message] Integration error:', integError)
       throw new Error('Integration not configured')
     }
 
-    const evoUrl = integ.evolution_api_url.replace(/\/$/, '')
-    const evoKey = integ.evolution_api_key ?? ''
-    const instanceName = integ.instance_name
+    const provider = getProvider(integ)
 
     const { data: contact, error: contactError } = await supabase
       .from('whatsapp_contacts')
@@ -110,34 +109,26 @@ Deno.serve(async (req: Request) => {
       throw new Error('Audio API key not found')
     }
 
-    console.log('[Transcribe Message] Requesting audio from Evolution API...')
-    const evoRes = await fetch(`${evoUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
-      method: 'POST',
-      headers: { apikey: evoKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: { key: { id: messageId } },
-        convertToMp4: false,
-      }),
-    })
-
-    if (!evoRes.ok) {
-      const errorText = await evoRes.text()
-      console.error(`[Transcribe Message] Evolution API error (${evoRes.status}):`, errorText)
-      throw new Error(`Failed to download audio: ${evoRes.status}`)
+    console.log('[Transcribe Message] Fetching audio via provider...')
+    const mediaResult = await provider.fetchMedia({ messageId, rawPayload: existingMsg?.raw })
+    if (!mediaResult) {
+      console.error('[Transcribe Message] No media data returned')
+      throw new Error('No audio data received')
     }
 
-    const { base64 } = await evoRes.json()
-    if (!base64) {
-      console.error('[Transcribe Message] No base64 in Evolution response')
-      throw new Error('No audio data received from Evolution API')
+    let audioBytes: Uint8Array
+    if (mediaResult.startsWith('http')) {
+      const mediaRes = await fetch(mediaResult)
+      if (!mediaRes.ok) throw new Error(`Failed to download audio from URL: ${mediaRes.status}`)
+      audioBytes = new Uint8Array(await mediaRes.arrayBuffer())
+    } else {
+      const binaryStr = atob(mediaResult)
+      audioBytes = new Uint8Array(binaryStr.length)
+      for (let i = 0; i < binaryStr.length; i++) {
+        audioBytes[i] = binaryStr.charCodeAt(i)
+      }
     }
-
-    console.log('[Transcribe Message] Audio downloaded, starting transcription...')
-    const binaryStr = atob(base64)
-    const audioBytes = new Uint8Array(binaryStr.length)
-    for (let i = 0; i < binaryStr.length; i++) {
-      audioBytes[i] = binaryStr.charCodeAt(i)
-    }
+    console.log('[Transcribe Message] Audio fetched, starting transcription...')
 
     const transcript = await transcribeAudio(audioBytes, audioKey.key)
     if (transcript) {

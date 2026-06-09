@@ -10,6 +10,7 @@ import { Loader2, Smartphone, BrainCircuit, CheckCircle2, KeyRound } from 'lucid
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
+import { cn } from '@/lib/utils'
 
 export default function Onboarding() {
   const { integration, setIntegration } = useIntegration()
@@ -23,8 +24,12 @@ export default function Onboarding() {
   const [progress, setProgress] = useState(0)
   const syncStarted = useRef(false)
 
+  const [provider, setProvider] = useState<'evolution' | 'zapi'>('evolution')
   const [credUrl, setCredUrl] = useState('')
   const [credKey, setCredKey] = useState('')
+  const [zapiId, setZapiId] = useState('')
+  const [zapiToken, setZapiToken] = useState('')
+  const [zapiClientToken, setZapiClientToken] = useState('')
   const [savingCredentials, setSavingCredentials] = useState(false)
 
   useEffect(() => {
@@ -39,7 +44,8 @@ export default function Onboarding() {
         const { data, error } = await supabase.functions.invoke('evolution-credentials', {
           body: { action: 'get' },
         })
-        if (!error && data?.api_key_masked) {
+        if (!error && data && (data.api_key_masked || data.zapi_instance_id)) {
+          if (data.provider) setProvider(data.provider)
           setStep(1)
         }
       } catch {
@@ -52,19 +58,35 @@ export default function Onboarding() {
   }, [])
 
   const handleSaveCredentials = async () => {
-    if (!credUrl.trim() || !credKey.trim()) {
-      toast.error('URL e API Key são obrigatórios')
-      return
-    }
     setSavingCredentials(true)
     try {
-      const { data, error } = await supabase.functions.invoke('evolution-credentials', {
-        body: { action: 'save', url: credUrl.trim(), api_key: credKey.trim() },
-      })
-      if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao salvar')
+      if (provider === 'zapi') {
+        if (!zapiId.trim() || !zapiToken.trim() || !zapiClientToken.trim()) {
+          toast.error('Instance ID, Instance Token e Client Token são obrigatórios')
+          return
+        }
+        const { data, error } = await supabase.functions.invoke('evolution-credentials', {
+          body: {
+            action: 'save_zapi',
+            zapi_instance_id: zapiId.trim(),
+            zapi_instance_token: zapiToken.trim(),
+            zapi_client_token: zapiClientToken.trim(),
+          },
+        })
+        if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao salvar')
+      } else {
+        if (!credUrl.trim() || !credKey.trim()) {
+          toast.error('URL e API Key são obrigatórios')
+          return
+        }
+        const { data, error } = await supabase.functions.invoke('evolution-credentials', {
+          body: { action: 'save', url: credUrl.trim(), api_key: credKey.trim() },
+        })
+        if (error || data?.error) throw new Error(data?.error || error?.message || 'Erro ao salvar')
+      }
       setStep(1)
     } catch (e: any) {
-      toast.error(e.message || 'Credenciais inválidas. Verifique a URL e a API Key.')
+      toast.error(e.message || 'Credenciais inválidas. Verifique os dados informados.')
     } finally {
       setSavingCredentials(false)
     }
@@ -230,12 +252,12 @@ export default function Onboarding() {
           </div>
           <div className="space-y-2">
             <CardTitle className="text-3xl font-semibold tracking-tight">
-              {step === 0 && 'Configurar Evolution API'}
+              {step === 0 && 'Configurar WhatsApp'}
               {step === 1 && t('link_whatsapp')}
               {step === 2 && t('setting_up_crm')}
             </CardTitle>
             <CardDescription className="text-[15px] font-medium px-4 text-muted-foreground">
-              {step === 0 && 'Informe a URL e a API Key da sua instância Evolution API'}
+              {step === 0 && 'Informe as credenciais da sua instância WhatsApp'}
               {step === 1 && t('scan_qr_desc')}
               {step === 2 && t('please_wait_sync')}
             </CardDescription>
@@ -245,28 +267,96 @@ export default function Onboarding() {
         <CardContent className="px-10 pb-12">
           {step === 0 && (
             <div className="flex flex-col gap-5 animate-in fade-in duration-300">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="evo-url">URL da Evolution API</Label>
-                <Input
-                  id="evo-url"
-                  type="url"
-                  placeholder="https://api.seudominio.com"
-                  value={credUrl}
-                  onChange={(e) => setCredUrl(e.target.value)}
-                  disabled={savingCredentials}
-                />
+              {/* Provider Toggle */}
+              <div className="flex gap-2 p-1 bg-muted/50 rounded-full w-fit mx-auto">
+                <button
+                  type="button"
+                  onClick={() => setProvider('evolution')}
+                  className={cn(
+                    'px-4 py-1.5 rounded-full text-sm font-semibold transition-all',
+                    provider === 'evolution'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  Evolution API
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProvider('zapi')}
+                  className={cn(
+                    'px-4 py-1.5 rounded-full text-sm font-semibold transition-all',
+                    provider === 'zapi'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  Z-API
+                </button>
               </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="evo-key">API Key</Label>
-                <Input
-                  id="evo-key"
-                  type="password"
-                  placeholder="Sua API Key"
-                  value={credKey}
-                  onChange={(e) => setCredKey(e.target.value)}
-                  disabled={savingCredentials}
-                />
-              </div>
+
+              {provider === 'evolution' ? (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="evo-url">URL da Evolution API</Label>
+                    <Input
+                      id="evo-url"
+                      type="url"
+                      placeholder="https://api.seudominio.com"
+                      value={credUrl}
+                      onChange={(e) => setCredUrl(e.target.value)}
+                      disabled={savingCredentials}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="evo-key">API Key</Label>
+                    <Input
+                      id="evo-key"
+                      type="password"
+                      placeholder="Sua API Key"
+                      value={credKey}
+                      onChange={(e) => setCredKey(e.target.value)}
+                      disabled={savingCredentials}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="zapi-id">Instance ID</Label>
+                    <Input
+                      id="zapi-id"
+                      placeholder="Ex: 3D8F2A1B..."
+                      value={zapiId}
+                      onChange={(e) => setZapiId(e.target.value)}
+                      disabled={savingCredentials}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="zapi-token">Instance Token</Label>
+                    <Input
+                      id="zapi-token"
+                      type="password"
+                      placeholder="Token da instância"
+                      value={zapiToken}
+                      onChange={(e) => setZapiToken(e.target.value)}
+                      disabled={savingCredentials}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="zapi-client-token">Client Token</Label>
+                    <Input
+                      id="zapi-client-token"
+                      type="password"
+                      placeholder="Client token da conta Z-API"
+                      value={zapiClientToken}
+                      onChange={(e) => setZapiClientToken(e.target.value)}
+                      disabled={savingCredentials}
+                    />
+                  </div>
+                </>
+              )}
+
               <Button
                 onClick={handleSaveCredentials}
                 disabled={savingCredentials}

@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { getProvider } from '../_shared/providers/factory.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -21,24 +22,11 @@ Deno.serve(async (req: Request) => {
       .single()
     if (!integ) throw new Error('Integration not found')
 
-    const evolutionApiUrlRaw = integ.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || ''
-    const evolutionApiUrl = evolutionApiUrlRaw.replace(/\/$/, '')
-    const evolutionApiKey = integ.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || ''
-    const instanceName = integ.instance_name
-
-    if (instanceName && evolutionApiUrl && evolutionApiKey) {
-      const response = await fetch(`${evolutionApiUrl}/instance/logout/${instanceName}`, {
-        method: 'DELETE',
-        headers: { apikey: evolutionApiKey },
-      })
-
-      if (!response.ok) {
-        const text = await response.text()
-        console.warn(
-          'Failed to logout instance cleanly, proceeding to set as DISCONNECTED anyway. Details:',
-          text,
-        )
-      }
+    try {
+      const provider = getProvider(integ)
+      await provider.disconnect()
+    } catch (disconnectErr: any) {
+      console.warn('Disconnect call failed, proceeding to DISCONNECTED anyway:', disconnectErr.message)
     }
 
     await supabase

@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { getProvider } from '../_shared/providers/factory.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -37,7 +38,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: message, error: msgError } = await supabaseClient
       .from('whatsapp_messages')
-      .select('contact_id')
+      .select('contact_id, raw')
       .eq('message_id', messageId)
       .eq('contact_id', contactId)
       .single()
@@ -51,7 +52,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: integration } = await supabaseClient
       .from('user_integrations')
-      .select('instance_name, evolution_api_url, evolution_api_key')
+      .select('*')
       .eq('user_id', user.id)
       .single()
 
@@ -62,40 +63,33 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    const evoUrlRaw = integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL')
-    const evoUrl = evoUrlRaw ? evoUrlRaw.replace(/\/$/, '') : ''
-    const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
+    const provider = getProvider(integration)
+    const mediaResult = await provider.fetchMedia({ messageId, rawPayload: message.raw })
 
-    const downloadUrl = `${evoUrl}/chat/getBase64FromMediaMessage/${integration.instance_name}`
-
-    const evoRes = await fetch(downloadUrl, {
-      method: 'POST',
-      headers: { apikey: evoKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: { key: { id: messageId } },
-        convertToMp4: false,
-      }),
-    })
-
-    if (!evoRes.ok) {
-      const errText = await evoRes.text()
-      console.error('[evolution-get-media] Evolution API error:', evoRes.status, errText)
-      return new Response(JSON.stringify({ error: 'Media download failed', detail: errText }), {
+    if (!mediaResult) {
+      return new Response(JSON.stringify({ error: 'No media data returned' }), {
         status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const { base64, mimetype } = await evoRes.json()
-
-    if (!base64) {
-      return new Response(JSON.stringify({ error: 'No base64 data returned' }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // Z-API returns a direct URL; Evolution returns base64
+    if (mediaResult.startsWith('http')) {
+      const upstream = await fetch(mediaResult)
+      if (!upstream.ok) {
+        return new Response(JSON.stringify({ error: 'Media fetch failed' }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
+      return new Response(upstream.body, {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': contentType, 'Cache-Control': 'private, max-age=3600' },
       })
     }
 
-    const binaryStr = atob(base64)
+    const binaryStr = atob(mediaResult)
     const bytes = new Uint8Array(binaryStr.length)
     for (let i = 0; i < binaryStr.length; i++) {
       bytes[i] = binaryStr.charCodeAt(i)
@@ -105,7 +99,7 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: {
         ...corsHeaders,
-        'Content-Type': mimetype || 'application/octet-stream',
+        'Content-Type': 'application/octet-stream',
         'Cache-Control': 'private, max-age=3600',
       },
     })

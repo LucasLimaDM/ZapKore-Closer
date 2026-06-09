@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractCanonicalPhone, normalizeJid, resolveLidToPhone } from '../_shared/utils.ts'
+import { getProvider } from '../_shared/providers/factory.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -31,15 +32,22 @@ Deno.serve(async (req: Request) => {
       .eq('user_id', user.id)
       .single()
 
-    if (integrationError || !integration || !integration.instance_name) {
+    if (integrationError || !integration) {
       throw new Error('Integration not found or not connected')
     }
 
-    const evoUrlRaw = integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL')
-    const evoUrl = evoUrlRaw ? evoUrlRaw.replace(/\/$/, '') : ''
-    const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
+    const provider = getProvider(integration)
+    const isZapi = (integration.provider ?? 'evolution') === 'zapi'
 
-    if (!evoUrl || !evoKey) throw new Error('Evolution API config missing')
+    // Evolution requires instance_name
+    if (!isZapi && !integration.instance_name) {
+      throw new Error('Integration not configured')
+    }
+
+    const evoUrl = isZapi ? '' : (integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/$/, '')
+    const evoKey = isZapi ? '' : (integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || '')
+
+    if (!isZapi && (!evoUrl || !evoKey)) throw new Error('Evolution API config missing')
 
     const { data: job, error: jobError } = await supabaseClient
       .from('import_jobs')
@@ -57,38 +65,80 @@ Deno.serve(async (req: Request) => {
 
     const runSync = async () => {
       try {
-        const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook`
-        const webhookRes = await fetch(`${evoUrl}/webhook/set/${integration.instance_name}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', apikey: evoKey },
-          body: JSON.stringify({
-            webhook: {
-              enabled: true,
-              url: webhookUrl,
-              events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'CONTACTS_UPSERT'],
-            },
-          }),
-        })
+        // Configure webhook for the integration's provider
+        const webhookUrl = isZapi
+          ? `${supabaseUrl}/functions/v1/zapi-webhook/${integration.user_id}`
+          : `${supabaseUrl}/functions/v1/evolution-webhook`
 
-        if (webhookRes.ok) {
+        const webhookOk = await provider.configureWebhook(webhookUrl).catch(() => false)
+        if (webhookOk) {
           await supabaseClient
             .from('user_integrations')
             .update({ is_webhook_enabled: true } as any)
             .eq('id', integration.id)
         }
 
-        let url = `${evoUrl}/chat/findChats/${integration.instance_name}`
-        let response = await fetch(url, {
+        // Z-API: use provider.syncChats() — no LID complexity
+        if (isZapi) {
+          const normalized = await provider.syncChats()
+          const { data: existingContacts } = await supabaseClient
+            .from('whatsapp_contacts')
+            .select('id, remote_jid, phone_number, push_name')
+            .eq('user_id', user.id)
+
+          await supabaseClient
+            .from('import_jobs')
+            .update({ total_items: normalized.length })
+            .eq('id', job.id)
+
+          let processed = 0
+          for (const c of normalized) {
+            const exists = (existingContacts || []).some(
+              (db) => db.remote_jid === c.remoteJid || (c.canonicalPhone && db.phone_number === c.canonicalPhone),
+            )
+            if (!exists) {
+              await supabaseClient.from('whatsapp_contacts').insert({
+                user_id: user.id,
+                remote_jid: c.remoteJid,
+                phone_number: c.canonicalPhone,
+                push_name: c.pushName,
+                last_message_at: c.lastMessageAt ?? null,
+              })
+            } else {
+              const upd: any = {}
+              const match = (existingContacts || []).find(
+                (db) => db.remote_jid === c.remoteJid || (c.canonicalPhone && db.phone_number === c.canonicalPhone),
+              )
+              if (match) {
+                if (c.pushName && !/^\d+$/.test(c.pushName) && c.pushName !== match.push_name) upd.push_name = c.pushName
+                if (c.canonicalPhone && !match.phone_number) upd.phone_number = c.canonicalPhone
+                if (Object.keys(upd).length > 0) {
+                  await supabaseClient.from('whatsapp_contacts').update(upd).eq('id', match.id)
+                }
+              }
+            }
+            processed++
+          }
+
+          await supabaseClient
+            .from('import_jobs')
+            .update({ processed_items: processed, status: 'completed' })
+            .eq('id', job.id)
+
+          await supabaseClient.functions.invoke('evolution-sync-messages', {})
+          return
+        }
+
+        // Evolution: raw findChats with LID resolution
+        const response = await fetch(`${evoUrl}/chat/findChats/${integration.instance_name}`, {
           method: 'POST',
           headers: { apikey: evoKey, 'Content-Type': 'application/json' },
           body: JSON.stringify({ where: {}, sort: 'desc', page: 1, offset: 0 }),
         })
 
-        let chatsData: any = null
         let chats: any[] = []
-
         if (response.ok) {
-          chatsData = await response.json()
+          const chatsData = await response.json()
           if (Array.isArray(chatsData)) chats = chatsData
           else if (chatsData && Array.isArray(chatsData.records)) chats = chatsData.records
           else if (chatsData && Array.isArray(chatsData.data)) chats = chatsData.data

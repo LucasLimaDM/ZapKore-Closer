@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractCanonicalPhone, normalizeJid, resolveLidToPhone } from '../_shared/utils.ts'
+import { getProvider } from '../_shared/providers/factory.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -29,15 +30,19 @@ Deno.serve(async (req: Request) => {
       .eq('user_id', user.id)
       .single()
 
-    if (integrationError || !integration || !integration.instance_name) {
+    if (integrationError || !integration) {
       throw new Error('Integration not found or not connected')
     }
 
-    const evoUrlRaw = integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL')
-    const evoUrl = evoUrlRaw ? evoUrlRaw.replace(/\/$/, '') : ''
-    const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
+    const provider = getProvider(integration)
+    const isZapi = (integration.provider ?? 'evolution') === 'zapi'
 
-    if (!evoUrl || !evoKey) throw new Error('Evolution API config missing')
+    if (!isZapi && !integration.instance_name) throw new Error('Integration not configured')
+
+    const evoUrl = isZapi ? '' : (integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/$/, '')
+    const evoKey = isZapi ? '' : (integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || '')
+
+    if (!isZapi && (!evoUrl || !evoKey)) throw new Error('Evolution API config missing')
 
     const { data: job, error: jobError } = await supabaseClient
       .from('import_jobs')
@@ -55,6 +60,56 @@ Deno.serve(async (req: Request) => {
 
     const runSync = async () => {
       try {
+        // Z-API: iterate DB contacts, fetch messages per contact via provider
+        if (isZapi) {
+          const { data: dbContacts } = await supabaseClient
+            .from('whatsapp_contacts')
+            .select('id, remote_jid, phone_number')
+            .eq('user_id', user.id)
+            .limit(100)
+
+          const contacts = dbContacts || []
+          await supabaseClient
+            .from('import_jobs')
+            .update({ total_items: contacts.length })
+            .eq('id', job.id)
+
+          let processed = 0
+          for (const contact of contacts) {
+            try {
+              const chatId = contact.phone_number || contact.remote_jid.replace(/@[\w.]+$/, '')
+              const messages = await provider.syncMessages(chatId)
+              const rows = messages.map((m) => ({
+                user_id: user.id,
+                contact_id: contact.id,
+                message_id: m.messageId,
+                from_me: m.fromMe,
+                text: m.text ?? null,
+                type: m.type,
+                timestamp: m.timestamp,
+                raw: m.raw,
+              }))
+              if (rows.length > 0) {
+                for (let i = 0; i < rows.length; i += 100) {
+                  await supabaseClient
+                    .from('whatsapp_messages')
+                    .upsert(rows.slice(i, i + 100), { onConflict: 'user_id,message_id' })
+                }
+              }
+            } catch (contactErr) {
+              console.error(`[ZAPI] Failed syncing messages for ${contact.remote_jid}:`, contactErr)
+            }
+            processed++
+          }
+
+          await supabaseClient
+            .from('import_jobs')
+            .update({ processed_items: processed, status: 'completed' })
+            .eq('id', job.id)
+          return
+        }
+
+        // Evolution: raw paginated findMessages with LID resolution
         const chatsUrl = `${evoUrl}/chat/findChats/${integration.instance_name}`
         const chatsRes = await fetch(chatsUrl, {
           method: 'POST',
