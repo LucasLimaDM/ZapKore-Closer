@@ -1,6 +1,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import OpenAI from 'npm:openai'
 import { linkLidToPhone } from '../_shared/contact-linking.ts'
+import { getProvider } from '../_shared/providers/factory.ts'
 
 export async function processAiResponse(
   userId: string,
@@ -91,28 +92,18 @@ export async function processAiResponse(
       return
     }
 
-    const evoUrl = (
-      integration.evolution_api_url ||
-      Deno.env.get('EVOLUTION_API_URL') ||
-      ''
-    ).replace(/\/$/, '')
-    const evoKey = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY')
-
-    if (!evoUrl) {
+    let provider: ReturnType<typeof getProvider>
+    try {
+      provider = getProvider(integration)
+    } catch (credErr: any) {
       console.error(
-        `[AI Handler] EXIT evolution_url_missing userId=${userId} — save Evolution API URL in Settings > Credenciais`,
-      )
-      return
-    }
-    if (!evoKey) {
-      console.error(
-        `[AI Handler] EXIT evolution_key_missing userId=${userId} — save Evolution API Key in Settings > Credenciais`,
+        `[AI Handler] EXIT provider_credentials_missing userId=${userId} — ${credErr.message}`,
       )
       return
     }
 
     console.log(
-      `[AI Handler] evolution_ok url=${evoUrl.slice(0, 50)}... instance=${integration.instance_name} elapsed=${elapsed()}`,
+      `[AI Handler] provider_ok provider=${integration.provider ?? 'evolution'} instance=${integration.instance_name ?? 'zapi'} elapsed=${elapsed()}`,
     )
 
     // Rate limit: msg/hour check
@@ -123,16 +114,11 @@ export async function processAiResponse(
       console.log(
         `[AI Handler] rate_limit_msg_hit contactId=${contactId} count=${contact.msg_count_hour} limit=${integration.rate_limit_msg_per_hour}`,
       )
-      await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
-        method: 'POST',
-        headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          number: contact.remote_jid,
-          text:
-            integration.rate_limit_message ??
-            'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
-        }),
-      }).catch((err: any) =>
+      await provider.sendText(
+        contact.remote_jid,
+        integration.rate_limit_message ??
+          'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+      ).catch((err: any) =>
         console.error(`[AI Handler] rate_limit_msg_send_failed contactId=${contactId}:`, err),
       )
       await supabase
@@ -482,50 +468,33 @@ export async function processAiResponse(
       `[AI Handler] send_start dest=${contact.remote_jid} instance=${integration.instance_name} elapsed=${elapsed()}`,
     )
 
-    const sendRes = await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
-      method: 'POST',
-      headers: {
-        apikey: evoKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        number: contact.remote_jid,
-        text: textToSend,
-      }),
-    })
-
-    if (!sendRes.ok) {
-      const errText = await sendRes.text()
+    let sendResult: { messageId: string; raw: unknown }
+    try {
+      sendResult = await provider.sendText(contact.remote_jid, textToSend)
+    } catch (sendErr: any) {
       console.error(
-        `[AI Handler] EXIT sendtext_failed http_status=${sendRes.status} ` +
-          `url=${evoUrl}/message/sendText/${integration.instance_name} ` +
-          `dest=${contact.remote_jid} body=${errText.slice(0, 400)} elapsed=${elapsed()}`,
+        `[AI Handler] EXIT sendtext_failed dest=${contact.remote_jid} error=${sendErr.message} elapsed=${elapsed()}`,
       )
       return
     }
 
-    console.log(`[AI Handler] send_ok http_status=${sendRes.status} elapsed=${elapsed()}`)
+    console.log(`[AI Handler] send_ok elapsed=${elapsed()}`)
 
     if (tokenLimitHit) {
       console.log(
         `[AI Handler] token_limit_hit contactId=${contactId} — sending rate limit message and handoffing`,
       )
-      await fetch(`${evoUrl}/message/sendText/${integration.instance_name}`, {
-        method: 'POST',
-        headers: { apikey: evoKey as string, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          number: contact.remote_jid,
-          text:
-            integration.rate_limit_message ??
-            'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
-        }),
-      }).catch((err: any) =>
+      await provider.sendText(
+        contact.remote_jid,
+        integration.rate_limit_message ??
+          'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+      ).catch((err: any) =>
         console.error(`[AI Handler] token_limit_msg_send_failed contactId=${contactId}:`, err),
       )
     }
 
-    const result = await sendRes.json()
-    const messageId = result?.key?.id || result?.id || crypto.randomUUID()
+    const result = sendResult.raw as any
+    const messageId = sendResult.messageId
     const actualRemoteJid = result?.key?.remoteJid
 
     // If Evolution resolved the LID to a phone JID, merge LID and phone contacts.
