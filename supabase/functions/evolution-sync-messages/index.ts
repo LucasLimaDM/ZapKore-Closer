@@ -60,13 +60,12 @@ Deno.serve(async (req: Request) => {
 
     const runSync = async () => {
       try {
-        // Z-API: iterate DB contacts, fetch messages per contact via provider
+        // Z-API: update last_message_at per contact — no message storage
         if (isZapi) {
           const { data: dbContacts } = await supabaseClient
             .from('whatsapp_contacts')
             .select('id, remote_jid, phone_number')
             .eq('user_id', user.id)
-            .limit(100)
 
           const contacts = dbContacts || []
           await supabaseClient
@@ -77,34 +76,31 @@ Deno.serve(async (req: Request) => {
           let processed = 0
           for (const contact of contacts) {
             try {
-              const chatId = contact.phone_number || contact.remote_jid.replace(/@[\w.]+$/, '')
-              const messages = await provider.syncMessages(chatId)
-              const rows = messages.map((m) => ({
-                user_id: user.id,
-                contact_id: contact.id,
-                message_id: m.messageId,
-                from_me: m.fromMe,
-                text: m.text ?? null,
-                type: m.type,
-                timestamp: m.timestamp,
-                raw: m.raw,
-              }))
-              if (rows.length > 0) {
-                for (let i = 0; i < rows.length; i += 100) {
-                  await supabaseClient
-                    .from('whatsapp_messages')
-                    .upsert(rows.slice(i, i + 100), { onConflict: 'user_id,message_id' })
-                }
+              const chatId = contact.phone_number
+                ? `${contact.phone_number}@s.whatsapp.net`
+                : contact.remote_jid
+              const last = await provider.getLastMessage(chatId)
+              if (last) {
+                await supabaseClient
+                  .from('whatsapp_contacts')
+                  .update({ last_message_at: last.timestamp })
+                  .eq('id', contact.id)
               }
             } catch (contactErr) {
-              console.error(`[ZAPI] Failed syncing messages for ${contact.remote_jid}:`, contactErr)
+              console.error(`[ZAPI-SYNC] getLastMessage failed for ${contact.remote_jid}:`, contactErr)
             }
             processed++
+            if (processed % 10 === 0 || processed === contacts.length) {
+              await supabaseClient
+                .from('import_jobs')
+                .update({ processed_items: processed })
+                .eq('id', job.id)
+            }
           }
 
           await supabaseClient
             .from('import_jobs')
-            .update({ processed_items: processed, status: 'completed' })
+            .update({ processed_items: contacts.length, status: 'completed' })
             .eq('id', job.id)
           return
         }
