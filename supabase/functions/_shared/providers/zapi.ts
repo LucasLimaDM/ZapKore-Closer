@@ -55,10 +55,20 @@ export class ZapiProvider implements WhatsAppProvider {
     const r = await fetch(`${this.base}/qr-code/image`, {
       headers: { 'Client-Token': this.clientToken },
     })
-    if (!r.ok) throw new Error(`Z-API getQrCode failed (${r.status}): ${await r.text()}`)
+    if (!r.ok) {
+      // QR may have been consumed after scan — re-check status before erroring
+      const recheckStatus = await this.getStatus()
+      if (recheckStatus === 'CONNECTED') return { connected: true }
+      throw new Error('qr_not_ready_yet')
+    }
     const j = await r.json()
     const base64 = j.value ?? j.qrCode ?? j.base64
-    if (!base64) throw new Error('Z-API getQrCode: no base64 in response')
+    if (!base64) {
+      // Empty QR response — treat as transitioning
+      const recheckStatus = await this.getStatus()
+      if (recheckStatus === 'CONNECTED') return { connected: true }
+      throw new Error('qr_not_ready_yet')
+    }
     return { base64 }
   }
 
@@ -79,26 +89,33 @@ export class ZapiProvider implements WhatsAppProvider {
   }
 
   async syncChats(): Promise<NormalizedContact[]> {
-    const r = await fetch(`${this.base}/chats`, {
-      headers: { 'Client-Token': this.clientToken },
-    })
-    if (!r.ok) throw new Error(`Z-API syncChats failed (${r.status}): ${await r.text()}`)
-    const chats: any[] = await r.json()
-    return chats
-      .filter((c) => c.phone && !String(c.phone).includes('@g.us'))
-      .map((c) => {
-        const phone = String(c.phone).replace(/@[\w.]+$/, '')
-        return {
-          remoteJid: `${phone}@s.whatsapp.net`,
-          pushName: c.name ?? c.chatName ?? null,
-          canonicalPhone: phone,
-          lastMessageAt: c.lastMessageTime
-            ? new Date(
-                c.lastMessageTime < 10000000000 ? c.lastMessageTime * 1000 : c.lastMessageTime,
-              ).toISOString()
-            : undefined,
-        }
+    const contacts: NormalizedContact[] = []
+    let page = 1
+
+    while (true) {
+      const r = await fetch(`${this.base}/contacts?page=${page}&pageSize=100`, {
+        headers: { 'Client-Token': this.clientToken },
       })
+      if (!r.ok) throw new Error(`Z-API syncContacts failed (${r.status}): ${await r.text()}`)
+      const batch: any[] = await r.json()
+      if (!Array.isArray(batch) || batch.length === 0) break
+
+      for (const c of batch) {
+        const phone = String(c.phone ?? '').replace(/@[\w.]+$/, '').trim()
+        if (!phone || !/^\d+$/.test(phone)) continue
+        const rawName = c.name ?? c.vname ?? null
+        const pushName = rawName && !/^\d+$/.test(String(rawName).trim()) ? rawName : null
+        contacts.push({
+          remoteJid: `${phone}@s.whatsapp.net`,
+          pushName,
+          canonicalPhone: phone,
+        })
+      }
+
+      page++
+    }
+
+    return contacts
   }
 
   async syncMessages(chatId: string): Promise<NormalizedMessage[]> {
@@ -128,6 +145,55 @@ export class ZapiProvider implements WhatsAppProvider {
         raw: m,
       }
     })
+  }
+
+  async getChatMessages(chatId: string, opts?: { page?: number; limit?: number }): Promise<NormalizedMessage[]> {
+    const phone = this.toPhone(chatId)
+    const limit = opts?.limit ?? 50
+    const page = opts?.page ?? 1
+
+    const r = await fetch(`${this.base}/chat-messages/${phone}`, {
+      headers: { 'Client-Token': this.clientToken },
+    })
+    if (!r.ok) {
+      console.warn(`[ZapiProvider] getChatMessages failed for ${phone}: ${await r.text()}`)
+      return []
+    }
+    const raw: any[] = await r.json()
+    if (!Array.isArray(raw)) return []
+
+    // Sort descending (newest first), then paginate
+    const sorted = [...raw].sort((a, b) => {
+      const ta = a.momment ?? a.timestamp ?? 0
+      const tb = b.momment ?? b.timestamp ?? 0
+      return tb - ta
+    })
+    const offset = (page - 1) * limit
+    const slice = sorted.slice(offset, offset + limit)
+
+    return slice.map((m) => {
+      const p = m.phone ?? phone
+      const cleanPhone = String(p).replace(/@[\w.]+$/, '')
+      const ts = m.momment ?? m.timestamp ?? m.messageTimestamp
+      return {
+        messageId: m.messageId ?? m.id,
+        remoteJid: `${cleanPhone}@s.whatsapp.net`,
+        fromMe: m.fromMe ?? false,
+        text: m.text?.message ?? m.body ?? null,
+        timestamp: ts
+          ? new Date(ts < 10000000000 ? ts * 1000 : ts).toISOString()
+          : new Date().toISOString(),
+        type: m.audio ? 'audioMessage' : m.image ? 'imageMessage' : 'conversation',
+        mediaUrl: m.audio?.audioUrl ?? m.image?.imageUrl ?? null,
+        raw: m,
+      }
+    })
+  }
+
+  async getLastMessage(chatId: string): Promise<{ messageId: string; timestamp: string } | null> {
+    const messages = await this.getChatMessages(chatId, { page: 1, limit: 1 })
+    if (messages.length === 0) return null
+    return { messageId: messages[0].messageId, timestamp: messages[0].timestamp }
   }
 
   parseInbound(payload: unknown): NormalizedInbound | null {
