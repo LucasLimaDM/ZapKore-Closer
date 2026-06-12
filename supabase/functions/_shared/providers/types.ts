@@ -31,12 +31,14 @@ export interface NormalizedMessage {
 
 export interface WhatsAppProvider {
   sendText(toJid: string, text: string): Promise<{ messageId: string; raw: unknown }>
-  getQrCode(): Promise<{ base64: string } | { connected: true }>
+  getQrCode(): Promise<{ base64 : string } | { connected: true }>
   getStatus(): Promise<'CONNECTED' | 'WAITING_QR' | 'DISCONNECTED'>
   configureWebhook(callbackUrl: string): Promise<boolean>
   disconnect(): Promise<void>
   syncChats(): Promise<NormalizedContact[]>
   syncMessages(chatId: string): Promise<NormalizedMessage[]>
+  getChatMessages(chatId: string, opts?: { page?: number; limit?: number }): Promise<NormalizedMessage[]>
+  getLastMessage(chatId: string): Promise<{ messageId: string; timestamp: string } | null>
   parseInbound(payload: unknown): NormalizedInbound | null
   fetchMedia(options: { messageId?: string; rawPayload?: unknown }): Promise<string | null>
 }
