@@ -175,6 +175,51 @@ export class EvolutionProvider implements WhatsAppProvider {
     })
   }
 
+  async getChatMessages(chatId: string, opts?: { page?: number; limit?: number }): Promise<NormalizedMessage[]> {
+    const page = opts?.page ?? 1
+    const limit = opts?.limit ?? 50
+    const r = await fetch(`${this.url}/chat/findMessages/${this.instance}`, {
+      method: 'POST',
+      headers: { apikey: this.key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        where: { key: { remoteJid: chatId } },
+        sort: 'desc',
+        page,
+        limit,
+      }),
+    })
+    if (!r.ok) {
+      console.warn(`[EvolutionProvider] getChatMessages failed for ${chatId}: ${await r.text()}`)
+      return []
+    }
+    const data = await r.json()
+    const messages: any[] = Array.isArray(data)
+      ? data
+      : data?.messages?.records ?? data?.messages ?? data?.records ?? []
+    return messages.map((m) => {
+      const key = m.key ?? {}
+      const content = m.message ?? {}
+      const ts = m.messageTimestamp ?? m.timestamp
+      return {
+        messageId: key.id ?? m.id,
+        remoteJid: key.remoteJid ?? chatId,
+        fromMe: key.fromMe ?? false,
+        text: content.conversation ?? content.extendedTextMessage?.text ?? null,
+        timestamp: ts
+          ? new Date(ts < 100000000000 ? ts * 1000 : ts).toISOString()
+          : new Date().toISOString(),
+        type: Object.keys(content).filter((k) => k !== 'messageContextInfo')[0] ?? 'text',
+        raw: m,
+      }
+    })
+  }
+
+  async getLastMessage(chatId: string): Promise<{ messageId: string; timestamp: string } | null> {
+    const messages = await this.getChatMessages(chatId, { page: 1, limit: 1 })
+    if (messages.length === 0) return null
+    return { messageId: messages[0].messageId, timestamp: messages[0].timestamp }
+  }
+
   async fetchMedia(options: { messageId?: string; rawPayload?: unknown }): Promise<string | null> {
     const { messageId } = options
     if (!messageId) return null
