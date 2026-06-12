@@ -57,6 +57,7 @@ export default function Chat() {
   const isLoadingMoreRef = useRef(false)
   const isNearBottomRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
+  const currentPageRef = useRef(1)
   const PAGE_SIZE = 50
 
   const [hasMore, setHasMore] = useState(true)
@@ -85,16 +86,13 @@ export default function Chat() {
 
       if (contactData) setContact(contactData)
 
-      const { data: messagesData } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .eq('contact_id', id)
-        .order('timestamp', { ascending: false })
-        .limit(PAGE_SIZE)
-
-      if (messagesData) {
-        setMessages([...messagesData].reverse())
-        setHasMore(messagesData.length === PAGE_SIZE)
+      currentPageRef.current = 1
+      const { data: msgData, error: msgError } = await supabase.functions.invoke('get-chat-messages', {
+        body: { contactId: id, page: 1 },
+      })
+      if (!msgError && msgData?.messages) {
+        setMessages(msgData.messages)
+        setHasMore(msgData.hasMore ?? false)
       } else {
         setHasMore(false)
       }
@@ -120,7 +118,7 @@ export default function Chat() {
                 m.id === payload.new.id ? (payload.new as WhatsAppMessage) : m,
               )
             }
-            if (prev.find((m) => m.id === payload.new.id)) return prev
+            if (prev.find((m) => m.message_id === payload.new.message_id)) return prev
 
             // Only scroll to bottom for NEW messages (INSERT)
             if (payload.eventType === 'INSERT') {
@@ -175,35 +173,32 @@ export default function Chat() {
   }
 
   const loadMoreMessages = useCallback(async () => {
-    if (isLoadingMoreRef.current || !hasMore || !messages.length || !id) return
+    if (isLoadingMoreRef.current || !hasMore || !id) return
     isLoadingMoreRef.current = true
     setIsLoadingMore(true)
     prevScrollHeightRef.current = messagesContainerRef.current?.scrollHeight ?? 0
 
     try {
-      const oldest = messages[0].timestamp
-
-      const { data } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .eq('contact_id', id)
-        .lt('timestamp', oldest)
-        .order('timestamp', { ascending: false })
-        .limit(PAGE_SIZE)
-
-      if (data) {
+      const nextPage = currentPageRef.current + 1
+      const { data: msgData, error: msgError } = await supabase.functions.invoke('get-chat-messages', {
+        body: { contactId: id, page: nextPage },
+      })
+      if (!msgError && msgData?.messages && msgData.messages.length > 0) {
+        currentPageRef.current = nextPage
         setMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id))
-          const newMsgs = [...data].reverse().filter((m) => !existingIds.has(m.id))
+          const existingIds = new Set(prev.map((m) => m.message_id))
+          const newMsgs = msgData.messages.filter((m: WhatsAppMessage) => !existingIds.has(m.message_id))
           return [...newMsgs, ...prev]
         })
-        setHasMore(data.length === PAGE_SIZE)
+        setHasMore(msgData.hasMore ?? false)
+      } else {
+        setHasMore(false)
       }
     } finally {
       isLoadingMoreRef.current = false
       setIsLoadingMore(false)
     }
-  }, [hasMore, messages, id])
+  }, [hasMore, id])
 
   useEffect(() => {
     loadMoreFnRef.current = loadMoreMessages
