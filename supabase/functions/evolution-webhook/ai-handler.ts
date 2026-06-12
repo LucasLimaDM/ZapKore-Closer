@@ -1,7 +1,29 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient, SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import OpenAI from 'npm:openai'
 import { linkLidToPhone } from '../_shared/contact-linking.ts'
 import { getProvider } from '../_shared/providers/factory.ts'
+
+async function notifyError(
+  supabase: SupabaseClient,
+  userId: string,
+  code: string,
+  title: string,
+  body?: string,
+  contactId?: string,
+) {
+  try {
+    await supabase.from('agent_notifications').insert({
+      user_id: userId,
+      type: 'error',
+      code,
+      title,
+      body: body ?? null,
+      contact_id: contactId ?? null,
+    })
+  } catch (_e) {
+    // notification failure must never break AI handler
+  }
+}
 
 export async function processAiResponse(
   userId: string,
@@ -99,6 +121,7 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT provider_credentials_missing userId=${userId} — ${credErr.message}`,
       )
+      await notifyError(supabase, userId, 'provider_credentials_missing', 'Credenciais do provedor não configuradas', credErr.message, contactId)
       return
     }
 
@@ -139,6 +162,7 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT agent_load_failed agent_id=${contact.ai_agent_id} supabase_code=${agentError?.code} supabase_message=${agentError?.message} hint=${agentError?.hint ?? 'none'}`,
       )
+      await notifyError(supabase, userId, 'agent_load_failed', 'Falha ao carregar agente de IA', `agent_id=${contact.ai_agent_id} — ${agentError?.message ?? 'agente inativo ou não encontrado'}`, contactId)
       return
     }
 
@@ -152,6 +176,7 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT model_not_configured agent_id=${agent.id} — set a model in Agentes > edit agent`,
       )
+      await notifyError(supabase, userId, 'model_not_configured', 'Modelo não configurado no agente', `Acesse Agentes > editar agente "${agent.name}" e selecione um modelo`, contactId)
       return
     }
 
@@ -202,6 +227,7 @@ export async function processAiResponse(
         `[AI Handler] EXIT api_key_missing agent_id=${agent.id} api_key_id=${agent.api_key_id ?? 'NULL'} ` +
           `linked_key_row_present=${agent.user_api_keys !== null} — add an OpenRouter key in Agentes > Chaves de API`,
       )
+      await notifyError(supabase, userId, 'api_key_missing', 'Chave de API ausente', `Adicione uma chave OpenRouter em Configurações > Chaves de API e vincule ao agente "${agent.name}"`, contactId)
       return
     }
 
@@ -348,7 +374,10 @@ export async function processAiResponse(
             `full_error=${JSON.stringify(errBody ?? { message: openrouterErr?.message })} elapsed=${elapsed()}` +
             (isLast ? '' : ' — trying next fallback'),
         )
-        if (isLast) return
+        if (isLast) {
+          await notifyError(supabase, userId, 'openrouter_error', 'Erro ao chamar LLM', `model=${candidateModel} status=${openrouterErr?.status ?? 'none'} — ${openrouterErr?.message}`, contactId)
+          return
+        }
       }
     }
 
@@ -358,6 +387,7 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT empty_llm_response model=${modelId} finish_reason=${completion.choices[0]?.finish_reason} choices=${JSON.stringify(completion.choices)}`,
       )
+      await notifyError(supabase, userId, 'empty_llm_response', 'LLM retornou resposta vazia', `model=${modelId} finish_reason=${completion.choices[0]?.finish_reason}`, contactId)
       return
     }
 
@@ -475,6 +505,7 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT sendtext_failed dest=${contact.remote_jid} error=${sendErr.message} elapsed=${elapsed()}`,
       )
+      await notifyError(supabase, userId, 'sendtext_failed', 'Falha ao enviar mensagem', `dest=${contact.remote_jid} — ${sendErr.message}`, contactId)
       return
     }
 
