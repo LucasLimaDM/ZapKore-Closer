@@ -3,6 +3,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { getProvider } from '../_shared/providers/factory.ts'
 
+const LIMIT = 50
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -43,15 +45,34 @@ Deno.serve(async (req: Request) => {
 
     if (!integration) throw new Error('Integration not found')
 
+    const isZapi = (integration.provider ?? 'evolution') === 'zapi'
+
+    // Z-API multi-device does not expose a message history REST endpoint.
+    // Fall back to whatsapp_messages (webhook-received messages in DB).
+    if (isZapi) {
+      const offset = (page - 1) * LIMIT
+      const { data: dbMessages } = await adminClient
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('contact_id', contactId)
+        .order('timestamp', { ascending: false })
+        .range(offset, offset + LIMIT - 1)
+
+      const rows = dbMessages ?? []
+      return new Response(
+        JSON.stringify({ messages: [...rows].reverse(), hasMore: rows.length === LIMIT }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // Evolution: fetch directly from provider API
     const provider = getProvider(integration)
     const chatId = contact.phone_number
       ? `${contact.phone_number}@s.whatsapp.net`
       : contact.remote_jid
 
-    const LIMIT = 50
     const messages = await provider.getChatMessages(chatId, { page, limit: LIMIT })
 
-    // Shape to match WhatsAppMessage interface expected by Chat.tsx
     const shaped = messages.map((m) => ({
       id: m.messageId,
       message_id: m.messageId,
