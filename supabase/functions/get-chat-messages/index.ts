@@ -19,7 +19,10 @@ Deno.serve(async (req: Request) => {
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     })
-    const { data: { user }, error: userError } = await userClient.auth.getUser()
+    const {
+      data: { user },
+      error: userError,
+    } = await userClient.auth.getUser()
     if (userError || !user) throw new Error('Unauthorized')
 
     const body = await req.json()
@@ -86,14 +89,13 @@ Deno.serve(async (req: Request) => {
       raw: m.raw,
     }))
 
-    return new Response(
-      JSON.stringify({ messages: shaped, hasMore: messages.length === LIMIT }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    return new Response(JSON.stringify({ messages: shaped, hasMore: messages.length === LIMIT }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 })

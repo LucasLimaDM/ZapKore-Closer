@@ -26,7 +26,10 @@ Deno.serve(async (req: Request) => {
       const provider = getProvider(integ)
       await provider.disconnect()
     } catch (disconnectErr: any) {
-      console.warn('Disconnect call failed, proceeding to DISCONNECTED anyway:', disconnectErr.message)
+      console.warn(
+        'Disconnect call failed, proceeding to DISCONNECTED anyway:',
+        disconnectErr.message,
+      )
     }
 
     await supabase

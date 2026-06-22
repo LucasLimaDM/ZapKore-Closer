@@ -41,7 +41,10 @@ Deno.serve(async (req: Request) => {
     }
 
     if (payload.type === 'DisconnectedCallback') {
-      await supabase.from('user_integrations').update({ status: 'DISCONNECTED' }).eq('user_id', userId)
+      await supabase
+        .from('user_integrations')
+        .update({ status: 'DISCONNECTED' })
+        .eq('user_id', userId)
       console.log(`[ZAPI-WEBHOOK] User ${userId} disconnected`)
       return new Response(JSON.stringify({ success: true }), { status: 200 })
     }
@@ -60,7 +63,8 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[ZAPI-WEBHOOK] Inbound from ${normalized.remoteJid} type=${normalized.type}`)
 
-    const { remoteJid, pushName, messageId, fromMe, text, type, timestamp, raw, mediaUrl } = normalized
+    const { remoteJid, pushName, messageId, fromMe, text, type, timestamp, raw, mediaUrl } =
+      normalized
     const effectivePhone = remoteJid.replace(/@[\w.]+$/, '')
 
     // Upsert contact
@@ -102,8 +106,12 @@ Deno.serve(async (req: Request) => {
     } else {
       const upd: any = { last_message_at: timestamp }
       if (contact.pipeline_stage !== 'Contato Humano') upd.pipeline_stage = 'Em Conversa'
-      if (!fromMe && pushName && !/^\d+$/.test(pushName) &&
-          (!contact.push_name || /^\d+$/.test(contact.push_name))) {
+      if (
+        !fromMe &&
+        pushName &&
+        !/^\d+$/.test(pushName) &&
+        (!contact.push_name || /^\d+$/.test(contact.push_name))
+      ) {
         upd.push_name = pushName
       }
       if (effectivePhone && !contact.phone_number) upd.phone_number = effectivePhone
@@ -138,8 +146,15 @@ Deno.serve(async (req: Request) => {
         if (newVersion != null) {
           // For Z-API, pass direct audio URL in evoUrl slot; audio-handler adapted in Task 13
           const audioTask = processAudioMessage(
-            userId, contact.id, messageId, supabaseUrl, supabaseKey,
-            newVersion as number, mediaUrl, '', '',
+            userId,
+            contact.id,
+            messageId,
+            supabaseUrl,
+            supabaseKey,
+            newVersion as number,
+            mediaUrl,
+            '',
+            '',
           )
           if (typeof (globalThis as any).EdgeRuntime?.waitUntil === 'function') {
             ;(globalThis as any).EdgeRuntime.waitUntil(audioTask)

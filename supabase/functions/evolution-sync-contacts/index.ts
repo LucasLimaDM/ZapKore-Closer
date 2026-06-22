@@ -44,8 +44,15 @@ Deno.serve(async (req: Request) => {
       throw new Error('Integration not configured')
     }
 
-    const evoUrl = isZapi ? '' : (integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/$/, '')
-    const evoKey = isZapi ? '' : (integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || '')
+    const evoUrl = isZapi
+      ? ''
+      : (integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(
+          /\/$/,
+          '',
+        )
+    const evoKey = isZapi
+      ? ''
+      : integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || ''
 
     if (!isZapi && (!evoUrl || !evoKey)) throw new Error('Evolution API config missing')
 
@@ -94,7 +101,9 @@ Deno.serve(async (req: Request) => {
           let processed = 0
           for (const c of normalized) {
             const exists = (existingContacts || []).some(
-              (db) => db.remote_jid === c.remoteJid || (c.canonicalPhone && db.phone_number === c.canonicalPhone),
+              (db) =>
+                db.remote_jid === c.remoteJid ||
+                (c.canonicalPhone && db.phone_number === c.canonicalPhone),
             )
             if (!exists) {
               await supabaseClient.from('whatsapp_contacts').insert({
@@ -107,10 +116,13 @@ Deno.serve(async (req: Request) => {
             } else {
               const upd: any = {}
               const match = (existingContacts || []).find(
-                (db) => db.remote_jid === c.remoteJid || (c.canonicalPhone && db.phone_number === c.canonicalPhone),
+                (db) =>
+                  db.remote_jid === c.remoteJid ||
+                  (c.canonicalPhone && db.phone_number === c.canonicalPhone),
               )
               if (match) {
-                if (c.pushName && !/^\d+$/.test(c.pushName) && c.pushName !== match.push_name) upd.push_name = c.pushName
+                if (c.pushName && !/^\d+$/.test(c.pushName) && c.pushName !== match.push_name)
+                  upd.push_name = c.pushName
                 if (c.canonicalPhone && !match.phone_number) upd.phone_number = c.canonicalPhone
                 if (Object.keys(upd).length > 0) {
                   await supabaseClient.from('whatsapp_contacts').update(upd).eq('id', match.id)

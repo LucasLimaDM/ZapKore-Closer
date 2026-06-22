@@ -12,21 +12,22 @@
 
 ## File Map
 
-| File | Action | What changes |
-|---|---|---|
-| `supabase/functions/_shared/providers/types.ts` | Modify | Add `getChatMessages` + `getLastMessage` to `WhatsAppProvider` interface |
-| `supabase/functions/_shared/providers/zapi.ts` | Modify | Implement both new methods |
-| `supabase/functions/_shared/providers/evolution.ts` | Modify | Implement both new methods |
-| `supabase/functions/get-chat-messages/index.ts` | Create | New edge fn — auth, lookup contact+integration, call provider, return messages |
-| `supabase/functions/get-chat-messages/deno.json` | Create | Deno config for new fn |
-| `supabase/functions/evolution-sync-messages/index.ts` | Modify | Z-API path: replace bulk upsert with `getLastMessage` → update `last_message_at` only |
-| `src/pages/Chat.tsx` | Modify | Initial load via `get-chat-messages` fn; pagination via fn page param; fix realtime dedup |
+| File                                                  | Action | What changes                                                                              |
+| ----------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| `supabase/functions/_shared/providers/types.ts`       | Modify | Add `getChatMessages` + `getLastMessage` to `WhatsAppProvider` interface                  |
+| `supabase/functions/_shared/providers/zapi.ts`        | Modify | Implement both new methods                                                                |
+| `supabase/functions/_shared/providers/evolution.ts`   | Modify | Implement both new methods                                                                |
+| `supabase/functions/get-chat-messages/index.ts`       | Create | New edge fn — auth, lookup contact+integration, call provider, return messages            |
+| `supabase/functions/get-chat-messages/deno.json`      | Create | Deno config for new fn                                                                    |
+| `supabase/functions/evolution-sync-messages/index.ts` | Modify | Z-API path: replace bulk upsert with `getLastMessage` → update `last_message_at` only     |
+| `src/pages/Chat.tsx`                                  | Modify | Initial load via `get-chat-messages` fn; pagination via fn page param; fix realtime dedup |
 
 ---
 
 ## Task 1: Extend `WhatsAppProvider` interface
 
 **Files:**
+
 - Modify: `supabase/functions/_shared/providers/types.ts`
 
 - [ ] **Step 1: Add two methods to the interface**
@@ -73,7 +74,10 @@ export interface WhatsAppProvider {
   disconnect(): Promise<void>
   syncChats(): Promise<NormalizedContact[]>
   syncMessages(chatId: string): Promise<NormalizedMessage[]>
-  getChatMessages(chatId: string, opts?: { page?: number; limit?: number }): Promise<NormalizedMessage[]>
+  getChatMessages(
+    chatId: string,
+    opts?: { page?: number; limit?: number },
+  ): Promise<NormalizedMessage[]>
   getLastMessage(chatId: string): Promise<{ messageId: string; timestamp: string } | null>
   parseInbound(payload: unknown): NormalizedInbound | null
   fetchMedia(options: { messageId?: string; rawPayload?: unknown }): Promise<string | null>
@@ -92,6 +96,7 @@ git commit -m "feat: add getChatMessages and getLastMessage to WhatsAppProvider 
 ## Task 2: Implement new methods in `ZapiProvider`
 
 **Files:**
+
 - Modify: `supabase/functions/_shared/providers/zapi.ts`
 
 - [ ] **Step 1: Add `getChatMessages` method**
@@ -167,6 +172,7 @@ git commit -m "feat: implement getChatMessages and getLastMessage in ZapiProvide
 ## Task 3: Implement new methods in `EvolutionProvider`
 
 **Files:**
+
 - Modify: `supabase/functions/_shared/providers/evolution.ts`
 
 - [ ] **Step 1: Add `getChatMessages` method**
@@ -238,6 +244,7 @@ git commit -m "feat: implement getChatMessages and getLastMessage in EvolutionPr
 ## Task 4: Create `get-chat-messages` edge function
 
 **Files:**
+
 - Create: `supabase/functions/get-chat-messages/deno.json`
 - Create: `supabase/functions/get-chat-messages/index.ts`
 
@@ -274,7 +281,10 @@ Deno.serve(async (req: Request) => {
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     })
-    const { data: { user }, error: userError } = await userClient.auth.getUser()
+    const {
+      data: { user },
+      error: userError,
+    } = await userClient.auth.getUser()
     if (userError || !user) throw new Error('Unauthorized')
 
     const body = await req.json()
@@ -322,15 +332,14 @@ Deno.serve(async (req: Request) => {
       raw: m.raw,
     }))
 
-    return new Response(
-      JSON.stringify({ messages: shaped, hasMore: messages.length === LIMIT }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    return new Response(JSON.stringify({ messages: shaped, hasMore: messages.length === LIMIT }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 })
 ```
@@ -359,6 +368,7 @@ git commit -m "feat: add get-chat-messages edge function — proxies chat histor
 ## Task 5: Simplify `evolution-sync-messages` — Z-API path
 
 **Files:**
+
 - Modify: `supabase/functions/evolution-sync-messages/index.ts`
 
 The Z-API path currently iterates DB contacts, calls `syncMessages` (fetches all messages), and upserts everything into `whatsapp_messages`. Replace this with: call `getLastMessage` per contact → update `last_message_at` on the contact row. No `whatsapp_messages` inserts.
@@ -368,50 +378,47 @@ The Z-API path currently iterates DB contacts, calls `syncMessages` (fetches all
 In `evolution-sync-messages/index.ts`, find and replace the entire `if (isZapi) { ... return }` block (lines 64–109) with:
 
 ```typescript
-        // Z-API: update last_message_at per contact — no message storage
-        if (isZapi) {
-          const { data: dbContacts } = await supabaseClient
-            .from('whatsapp_contacts')
-            .select('id, remote_jid, phone_number')
-            .eq('user_id', user.id)
+// Z-API: update last_message_at per contact — no message storage
+if (isZapi) {
+  const { data: dbContacts } = await supabaseClient
+    .from('whatsapp_contacts')
+    .select('id, remote_jid, phone_number')
+    .eq('user_id', user.id)
 
-          const contacts = dbContacts || []
-          await supabaseClient
-            .from('import_jobs')
-            .update({ total_items: contacts.length })
-            .eq('id', job.id)
+  const contacts = dbContacts || []
+  await supabaseClient.from('import_jobs').update({ total_items: contacts.length }).eq('id', job.id)
 
-          let processed = 0
-          for (const contact of contacts) {
-            try {
-              const chatId = contact.phone_number
-                ? `${contact.phone_number}@s.whatsapp.net`
-                : contact.remote_jid
-              const last = await provider.getLastMessage(chatId)
-              if (last) {
-                await supabaseClient
-                  .from('whatsapp_contacts')
-                  .update({ last_message_at: last.timestamp })
-                  .eq('id', contact.id)
-              }
-            } catch (contactErr) {
-              console.error(`[ZAPI-SYNC] getLastMessage failed for ${contact.remote_jid}:`, contactErr)
-            }
-            processed++
-            if (processed % 10 === 0 || processed === contacts.length) {
-              await supabaseClient
-                .from('import_jobs')
-                .update({ processed_items: processed })
-                .eq('id', job.id)
-            }
-          }
+  let processed = 0
+  for (const contact of contacts) {
+    try {
+      const chatId = contact.phone_number
+        ? `${contact.phone_number}@s.whatsapp.net`
+        : contact.remote_jid
+      const last = await provider.getLastMessage(chatId)
+      if (last) {
+        await supabaseClient
+          .from('whatsapp_contacts')
+          .update({ last_message_at: last.timestamp })
+          .eq('id', contact.id)
+      }
+    } catch (contactErr) {
+      console.error(`[ZAPI-SYNC] getLastMessage failed for ${contact.remote_jid}:`, contactErr)
+    }
+    processed++
+    if (processed % 10 === 0 || processed === contacts.length) {
+      await supabaseClient
+        .from('import_jobs')
+        .update({ processed_items: processed })
+        .eq('id', job.id)
+    }
+  }
 
-          await supabaseClient
-            .from('import_jobs')
-            .update({ processed_items: contacts.length, status: 'completed' })
-            .eq('id', job.id)
-          return
-        }
+  await supabaseClient
+    .from('import_jobs')
+    .update({ processed_items: contacts.length, status: 'completed' })
+    .eq('id', job.id)
+  return
+}
 ```
 
 - [ ] **Step 2: Deploy**
@@ -434,9 +441,11 @@ git commit -m "feat: simplify evolution-sync-messages Z-API path — update last
 ## Task 6: Update `Chat.tsx` — load history via edge function
 
 **Files:**
+
 - Modify: `src/pages/Chat.tsx`
 
 Three changes:
+
 1. Replace the initial `fetchChat` DB message query with a call to `get-chat-messages`
 2. Update `loadMoreMessages` to call the edge function with incrementing page
 3. Fix realtime dedup to use `message_id` (not `id`, which differs between API messages and DB rows)
@@ -446,7 +455,7 @@ Three changes:
 After the existing state declarations (around line 62), add:
 
 ```typescript
-  const currentPageRef = useRef(1)
+const currentPageRef = useRef(1)
 ```
 
 - [ ] **Step 2: Replace `fetchChat` message query**
@@ -455,33 +464,33 @@ Inside the `fetchChat` async function (starting at line 79), replace the message
 
 ```typescript
 // OLD — remove these lines:
-      const { data: messagesData } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .eq('contact_id', id)
-        .order('timestamp', { ascending: false })
-        .limit(PAGE_SIZE)
+const { data: messagesData } = await supabase
+  .from('whatsapp_messages')
+  .select('*')
+  .eq('contact_id', id)
+  .order('timestamp', { ascending: false })
+  .limit(PAGE_SIZE)
 
-      if (messagesData) {
-        setMessages([...messagesData].reverse())
-        setHasMore(messagesData.length === PAGE_SIZE)
-      } else {
-        setHasMore(false)
-      }
+if (messagesData) {
+  setMessages([...messagesData].reverse())
+  setHasMore(messagesData.length === PAGE_SIZE)
+} else {
+  setHasMore(false)
+}
 ```
 
 ```typescript
 // NEW — replace with:
-      currentPageRef.current = 1
-      const { data: msgData, error: msgError } = await supabase.functions.invoke('get-chat-messages', {
-        body: { contactId: id, page: 1 },
-      })
-      if (!msgError && msgData?.messages) {
-        setMessages(msgData.messages)
-        setHasMore(msgData.hasMore ?? false)
-      } else {
-        setHasMore(false)
-      }
+currentPageRef.current = 1
+const { data: msgData, error: msgError } = await supabase.functions.invoke('get-chat-messages', {
+  body: { contactId: id, page: 1 },
+})
+if (!msgError && msgData?.messages) {
+  setMessages(msgData.messages)
+  setHasMore(msgData.hasMore ?? false)
+} else {
+  setHasMore(false)
+}
 ```
 
 - [ ] **Step 3: Replace `loadMoreMessages`**
@@ -489,33 +498,36 @@ Inside the `fetchChat` async function (starting at line 79), replace the message
 Replace the entire `loadMoreMessages` callback (lines 177–206) with:
 
 ```typescript
-  const loadMoreMessages = useCallback(async () => {
-    if (isLoadingMoreRef.current || !hasMore || !id) return
-    isLoadingMoreRef.current = true
-    setIsLoadingMore(true)
-    prevScrollHeightRef.current = messagesContainerRef.current?.scrollHeight ?? 0
+const loadMoreMessages = useCallback(async () => {
+  if (isLoadingMoreRef.current || !hasMore || !id) return
+  isLoadingMoreRef.current = true
+  setIsLoadingMore(true)
+  prevScrollHeightRef.current = messagesContainerRef.current?.scrollHeight ?? 0
 
-    try {
-      const nextPage = currentPageRef.current + 1
-      const { data: msgData, error: msgError } = await supabase.functions.invoke('get-chat-messages', {
+  try {
+    const nextPage = currentPageRef.current + 1
+    const { data: msgData, error: msgError } = await supabase.functions.invoke(
+      'get-chat-messages',
+      {
         body: { contactId: id, page: nextPage },
+      },
+    )
+    if (!msgError && msgData?.messages && msgData.messages.length > 0) {
+      currentPageRef.current = nextPage
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.message_id))
+        const newMsgs = msgData.messages.filter((m: any) => !existingIds.has(m.message_id))
+        return [...newMsgs, ...prev]
       })
-      if (!msgError && msgData?.messages && msgData.messages.length > 0) {
-        currentPageRef.current = nextPage
-        setMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.message_id))
-          const newMsgs = msgData.messages.filter((m: any) => !existingIds.has(m.message_id))
-          return [...newMsgs, ...prev]
-        })
-        setHasMore(msgData.hasMore ?? false)
-      } else {
-        setHasMore(false)
-      }
-    } finally {
-      isLoadingMoreRef.current = false
-      setIsLoadingMore(false)
+      setHasMore(msgData.hasMore ?? false)
+    } else {
+      setHasMore(false)
     }
-  }, [hasMore, id])
+  } finally {
+    isLoadingMoreRef.current = false
+    setIsLoadingMore(false)
+  }
+}, [hasMore, id])
 ```
 
 - [ ] **Step 4: Fix realtime dedup**
@@ -524,12 +536,12 @@ In the realtime `postgres_changes` handler inside `fetchChat` effect (around lin
 
 ```typescript
 // OLD:
-          if (prev.find((m) => m.id === payload.new.id)) return prev
+if (prev.find((m) => m.id === payload.new.id)) return prev
 ```
 
 ```typescript
 // NEW:
-          if (prev.find((m) => m.message_id === payload.new.message_id)) return prev
+if (prev.find((m) => m.message_id === payload.new.message_id)) return prev
 ```
 
 - [ ] **Step 5: Verify build**

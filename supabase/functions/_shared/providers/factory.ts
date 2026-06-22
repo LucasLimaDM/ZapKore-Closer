@@ -16,8 +16,14 @@ export function getProvider(integration: ProviderIntegration): WhatsAppProvider 
   const provider = integration.provider ?? 'evolution'
 
   if (provider === 'zapi') {
-    if (!integration.zapi_instance_id || !integration.zapi_instance_token || !integration.zapi_client_token) {
-      throw new Error('Z-API credentials not configured (zapi_instance_id, zapi_instance_token, zapi_client_token required)')
+    if (
+      !integration.zapi_instance_id ||
+      !integration.zapi_instance_token ||
+      !integration.zapi_client_token
+    ) {
+      throw new Error(
+        'Z-API credentials not configured (zapi_instance_id, zapi_instance_token, zapi_client_token required)',
+      )
     }
     return new ZapiProvider({
       instanceId: integration.zapi_instance_id,
@@ -26,7 +32,10 @@ export function getProvider(integration: ProviderIntegration): WhatsAppProvider 
     })
   }
 
-  const url = (integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/$/, '')
+  const url = (integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(
+    /\/$/,
+    '',
+  )
   const key = integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || ''
   const instance = integration.instance_name || ''
   if (!url || !key || !instance) throw new Error('Evolution credentials not configured')

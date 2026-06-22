@@ -87,9 +87,12 @@ export default function Chat() {
       if (contactData) setContact(contactData)
 
       currentPageRef.current = 1
-      const { data: msgData, error: msgError } = await supabase.functions.invoke('get-chat-messages', {
-        body: { contactId: id, page: 1 },
-      })
+      const { data: msgData, error: msgError } = await supabase.functions.invoke(
+        'get-chat-messages',
+        {
+          body: { contactId: id, page: 1 },
+        },
+      )
       if (!msgError && msgData?.messages) {
         setMessages(msgData.messages)
         setHasMore(msgData.hasMore ?? false)
@@ -180,14 +183,19 @@ export default function Chat() {
 
     try {
       const nextPage = currentPageRef.current + 1
-      const { data: msgData, error: msgError } = await supabase.functions.invoke('get-chat-messages', {
-        body: { contactId: id, page: nextPage },
-      })
+      const { data: msgData, error: msgError } = await supabase.functions.invoke(
+        'get-chat-messages',
+        {
+          body: { contactId: id, page: nextPage },
+        },
+      )
       if (!msgError && msgData?.messages && msgData.messages.length > 0) {
         currentPageRef.current = nextPage
         setMessages((prev) => {
           const existingIds = new Set(prev.map((m) => m.message_id))
-          const newMsgs = msgData.messages.filter((m: WhatsAppMessage) => !existingIds.has(m.message_id))
+          const newMsgs = msgData.messages.filter(
+            (m: WhatsAppMessage) => !existingIds.has(m.message_id),
+          )
           return [...newMsgs, ...prev]
         })
         setHasMore(msgData.hasMore ?? false)

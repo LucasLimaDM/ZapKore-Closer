@@ -62,8 +62,12 @@ export class EvolutionProvider implements WhatsAppProvider {
 
       if (!createRes.ok) {
         const errText = await createRes.text()
-        const isDuplicate = createRes.status === 409 || errText.includes('already exists') || errText.includes('Duplicated')
-        if (!isDuplicate) throw new Error(`Evolution instance/create failed (${createRes.status}): ${errText}`)
+        const isDuplicate =
+          createRes.status === 409 ||
+          errText.includes('already exists') ||
+          errText.includes('Duplicated')
+        if (!isDuplicate)
+          throw new Error(`Evolution instance/create failed (${createRes.status}): ${errText}`)
       } else {
         const createData = await createRes.json()
         if (createData.qrcode?.base64) return { base64: createData.qrcode.base64 }
@@ -82,7 +86,9 @@ export class EvolutionProvider implements WhatsAppProvider {
     })
 
     if (!connectRes.ok) {
-      throw new Error(`Evolution instance/connect failed (${connectRes.status}): ${await connectRes.text()}`)
+      throw new Error(
+        `Evolution instance/connect failed (${connectRes.status}): ${await connectRes.text()}`,
+      )
     }
 
     const connectData = await connectRes.json()
@@ -103,7 +109,13 @@ export class EvolutionProvider implements WhatsAppProvider {
         webhook: {
           enabled: true,
           url: callbackUrl,
-          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'MESSAGES_DELETE', 'CONNECTION_UPDATE', 'CONTACTS_UPSERT'],
+          events: [
+            'MESSAGES_UPSERT',
+            'MESSAGES_UPDATE',
+            'MESSAGES_DELETE',
+            'CONNECTION_UPDATE',
+            'CONTACTS_UPSERT',
+          ],
         },
       }),
     })
@@ -132,7 +144,14 @@ export class EvolutionProvider implements WhatsAppProvider {
       })
       .map((c) => {
         const jid = c.remoteJid ?? c.jid ?? c.id ?? ''
-        const rawName = c.pushName ?? c.name ?? c.verifiedName ?? c.contactName ?? c.profileName ?? c.displayName ?? null
+        const rawName =
+          c.pushName ??
+          c.name ??
+          c.verifiedName ??
+          c.contactName ??
+          c.profileName ??
+          c.displayName ??
+          null
         const pushName = rawName && !/^\d+$/.test(rawName) ? rawName : null
         return {
           remoteJid: jid,
@@ -156,7 +175,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       return []
     }
     const data = await r.json()
-    const messages: any[] = Array.isArray(data) ? data : data?.messages ?? []
+    const messages: any[] = Array.isArray(data) ? data : (data?.messages ?? [])
     return messages.map((m) => {
       const key = m.key ?? {}
       const content = m.message ?? {}
@@ -175,7 +194,10 @@ export class EvolutionProvider implements WhatsAppProvider {
     })
   }
 
-  async getChatMessages(chatId: string, opts?: { page?: number; limit?: number }): Promise<NormalizedMessage[]> {
+  async getChatMessages(
+    chatId: string,
+    opts?: { page?: number; limit?: number },
+  ): Promise<NormalizedMessage[]> {
     const page = opts?.page ?? 1
     const limit = opts?.limit ?? 50
     const r = await fetch(`${this.url}/chat/findMessages/${this.instance}`, {
@@ -195,7 +217,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     const data = await r.json()
     const messages: any[] = Array.isArray(data)
       ? data
-      : data?.messages?.records ?? data?.messages ?? data?.records ?? []
+      : (data?.messages?.records ?? data?.messages ?? data?.records ?? [])
     return messages.map((m) => {
       const key = m.key ?? {}
       const content = m.message ?? {}

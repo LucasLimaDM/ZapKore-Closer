@@ -37,21 +37,28 @@ Deno.serve(async (req: Request) => {
         .update({ status: dbStatus, is_webhook_enabled: webhookOk } as any)
         .eq('id', integrationId)
 
-      return new Response(
-        JSON.stringify({ success: true, connected: status === 'CONNECTED' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return new Response(JSON.stringify({ success: true, connected: status === 'CONNECTED' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     // Evolution: create instance, configure webhook
-    const evolutionApiUrl = (integ.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/$/, '')
+    const evolutionApiUrl = (
+      integ.evolution_api_url ||
+      Deno.env.get('EVOLUTION_API_URL') ||
+      ''
+    ).replace(/\/$/, '')
     const evolutionApiKey = integ.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || ''
 
-    if (!evolutionApiUrl || !evolutionApiKey) throw new Error('Evolution API credentials not configured.')
+    if (!evolutionApiUrl || !evolutionApiKey)
+      throw new Error('Evolution API credentials not configured.')
 
     const instanceName = integ.user_id
     if (integ.instance_name !== instanceName) {
-      await supabase.from('user_integrations').update({ instance_name: instanceName }).eq('id', integrationId)
+      await supabase
+        .from('user_integrations')
+        .update({ instance_name: instanceName })
+        .eq('id', integrationId)
     }
 
     const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook`
@@ -71,10 +78,17 @@ Deno.serve(async (req: Request) => {
       const text = await response.text()
       console.warn('Evolution API returned error on create:', text)
 
-      if (response.status === 409 || text.includes('already exists') || text.includes('Duplicated instance')) {
-        const stateRes = await fetch(`${evolutionApiUrl}/instance/connectionState/${instanceName}`, {
-          headers: { apikey: evolutionApiKey },
-        })
+      if (
+        response.status === 409 ||
+        text.includes('already exists') ||
+        text.includes('Duplicated instance')
+      ) {
+        const stateRes = await fetch(
+          `${evolutionApiUrl}/instance/connectionState/${instanceName}`,
+          {
+            headers: { apikey: evolutionApiKey },
+          },
+        )
 
         if (stateRes.ok) {
           const stateData = await stateRes.json()

@@ -27,19 +27,19 @@ No provider abstraction exists today. Evolution is coupled in these functions, e
 doing inline: read `evolution_api_url`/`evolution_api_key` from the integration row,
 build Evolution URL paths, send `apikey` header, build/parse Evolution payloads.
 
-| Function | Evolution API surface |
-|---|---|
-| `evolution-send-message` | `POST /message/sendText/{instance}` |
-| `evolution-webhook/index.ts` | parses Baileys `messages.upsert`/`messages.update`/`messages.delete` |
-| `evolution-webhook/ai-handler.ts` | `POST /message/sendText/{instance}` (AI reply) |
-| `evolution-create-instance` | `POST /instance/create` + `POST /webhook/set/{instance}` |
-| `evolution-get-qr` | `GET /instance/connectionState/{instance}` + `POST /webhook/set` |
-| `evolution-disconnect` | `GET /instance/logout/{instance}` |
-| `evolution-sync-contacts` | `GET /chat/findChats/{instance}` |
-| `evolution-sync-messages` | `GET /chat/findChats` + `POST /chat/findMessages/{instance}` |
-| `evolution-get-media` | `POST /chat/getBase64FromMediaMessage/{instance}` |
-| `evolution-transcribe-message` | `POST /chat/getBase64FromMediaMessage/{instance}` |
-| `evolution-credentials` | get/save `url` + `api_key` |
+| Function                          | Evolution API surface                                                |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `evolution-send-message`          | `POST /message/sendText/{instance}`                                  |
+| `evolution-webhook/index.ts`      | parses Baileys `messages.upsert`/`messages.update`/`messages.delete` |
+| `evolution-webhook/ai-handler.ts` | `POST /message/sendText/{instance}` (AI reply)                       |
+| `evolution-create-instance`       | `POST /instance/create` + `POST /webhook/set/{instance}`             |
+| `evolution-get-qr`                | `GET /instance/connectionState/{instance}` + `POST /webhook/set`     |
+| `evolution-disconnect`            | `GET /instance/logout/{instance}`                                    |
+| `evolution-sync-contacts`         | `GET /chat/findChats/{instance}`                                     |
+| `evolution-sync-messages`         | `GET /chat/findChats` + `POST /chat/findMessages/{instance}`         |
+| `evolution-get-media`             | `POST /chat/getBase64FromMediaMessage/{instance}`                    |
+| `evolution-transcribe-message`    | `POST /chat/getBase64FromMediaMessage/{instance}`                    |
+| `evolution-credentials`           | get/save `url` + `api_key`                                           |
 
 **Good news:** everything downstream of normalized `whatsapp_messages`/`whatsapp_contacts`
 (AI handler logic, pipeline, contact resolution, UI) is already provider-agnostic. The
@@ -87,13 +87,13 @@ exactly where a provider adapter belongs.
 
 ### Premises Z-API breaks
 
-| # | Current premise | Z-API reality |
-|---|---|---|
-| 1 | `instance_name = user_id`; webhook finds integration by it | Z-API assigns its own `instanceId`. Resolve user by embedding `user_id` in the webhook URL instead |
-| 2 | Baileys `messages.upsert` envelope + lid/jid duality | Z-API flat object: `text.message`, `phone`, `fromMe`, `momment` (ms), `senderName`, `senderLid`, `type:"ReceivedCallback"` |
-| 3 | Media decrypted via `getBase64FromMediaMessage` | Z-API gives direct `audioUrl`/`imageUrl` (hosted 30 days) — simpler |
-| 4 | `contact_identity` resolves lid→phone via `/chat/findContacts` | Z-API usually gives resolved `phone` + separate `senderLid`; WhatsApp does not map lid↔phone |
-| 5 | Header `apikey`, body `{number,text}`, JID destination | Z-API: `Client-Token` header, `{phone,message}`, bare phone |
+| #   | Current premise                                                | Z-API reality                                                                                                              |
+| --- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `instance_name = user_id`; webhook finds integration by it     | Z-API assigns its own `instanceId`. Resolve user by embedding `user_id` in the webhook URL instead                         |
+| 2   | Baileys `messages.upsert` envelope + lid/jid duality           | Z-API flat object: `text.message`, `phone`, `fromMe`, `momment` (ms), `senderName`, `senderLid`, `type:"ReceivedCallback"` |
+| 3   | Media decrypted via `getBase64FromMediaMessage`                | Z-API gives direct `audioUrl`/`imageUrl` (hosted 30 days) — simpler                                                        |
+| 4   | `contact_identity` resolves lid→phone via `/chat/findContacts` | Z-API usually gives resolved `phone` + separate `senderLid`; WhatsApp does not map lid↔phone                               |
+| 5   | Header `apikey`, body `{number,text}`, JID destination         | Z-API: `Client-Token` header, `{phone,message}`, bare phone                                                                |
 
 ## Architecture — hybrid adapter layer
 
@@ -135,9 +135,11 @@ once and never branches on provider.
 ```ts
 export function getProvider(integration): WhatsAppProvider {
   switch (integration.provider) {
-    case 'zapi':      return new ZapiProvider(integration)
+    case 'zapi':
+      return new ZapiProvider(integration)
     case 'evolution':
-    default:          return new EvolutionProvider(integration)
+    default:
+      return new EvolutionProvider(integration)
   }
 }
 ```
@@ -180,18 +182,18 @@ Z-API     → POST /zapi-webhook/{user_id}      (user_id in URL)
 Each function keeps its business logic; the API block becomes a `getProvider(integration)`
 call.
 
-| Function | Moves to adapter | Z-API behavior |
-|---|---|---|
-| `evolution-send-message` | `sendText` | `POST /send-text {phone,message}` |
-| `evolution-webhook/ai-handler` | `sendText` | same |
-| `evolution-get-qr` | `getQrCode` + `getStatus` + `configureWebhook` | `GET /status` + `GET /qr-code/image` + `update-every-webhooks` |
-| `evolution-create-instance` | `configureWebhook` + `getStatus` | no instance creation (user pasted creds) → configure webhook + check status |
-| `evolution-disconnect` | `disconnect` | `GET /disconnect` |
-| `evolution-sync-contacts` | `syncChats` | `GET /chats` |
-| `evolution-sync-messages` | `syncChats` + `syncMessages` | `GET /chats` + `GET /chat-messages/{phone}` |
-| `evolution-get-media` | `fetchMediaUrl` | direct `image.imageUrl` from payload |
-| `evolution-transcribe-message` | `fetchMediaUrl` | direct `audio.audioUrl` |
-| `evolution-credentials` | branch by provider | get/save Z-API trio |
+| Function                       | Moves to adapter                               | Z-API behavior                                                              |
+| ------------------------------ | ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `evolution-send-message`       | `sendText`                                     | `POST /send-text {phone,message}`                                           |
+| `evolution-webhook/ai-handler` | `sendText`                                     | same                                                                        |
+| `evolution-get-qr`             | `getQrCode` + `getStatus` + `configureWebhook` | `GET /status` + `GET /qr-code/image` + `update-every-webhooks`              |
+| `evolution-create-instance`    | `configureWebhook` + `getStatus`               | no instance creation (user pasted creds) → configure webhook + check status |
+| `evolution-disconnect`         | `disconnect`                                   | `GET /disconnect`                                                           |
+| `evolution-sync-contacts`      | `syncChats`                                    | `GET /chats`                                                                |
+| `evolution-sync-messages`      | `syncChats` + `syncMessages`                   | `GET /chats` + `GET /chat-messages/{phone}`                                 |
+| `evolution-get-media`          | `fetchMediaUrl`                                | direct `image.imageUrl` from payload                                        |
+| `evolution-transcribe-message` | `fetchMediaUrl`                                | direct `audio.audioUrl`                                                     |
+| `evolution-credentials`        | branch by provider                             | get/save Z-API trio                                                         |
 
 `contact_identity` and `merge_whatsapp_contacts` logic stay. Z-API rarely needs
 `resolveLidToPhone` (phone usually pre-resolved); when `phone` arrives as `@lid`, the

@@ -101,7 +101,9 @@ export class ZapiProvider implements WhatsAppProvider {
       if (!Array.isArray(batch) || batch.length === 0) break
 
       for (const c of batch) {
-        const phone = String(c.phone ?? '').replace(/@[\w.]+$/, '').trim()
+        const phone = String(c.phone ?? '')
+          .replace(/@[\w.]+$/, '')
+          .trim()
         if (!phone || !/^\d+$/.test(phone)) continue
         const rawName = c.name ?? c.vname ?? null
         const pushName = rawName && !/^\d+$/.test(String(rawName).trim()) ? rawName : null
@@ -147,7 +149,10 @@ export class ZapiProvider implements WhatsAppProvider {
     })
   }
 
-  async getChatMessages(chatId: string, opts?: { page?: number; limit?: number }): Promise<NormalizedMessage[]> {
+  async getChatMessages(
+    chatId: string,
+    opts?: { page?: number; limit?: number },
+  ): Promise<NormalizedMessage[]> {
     const phone = this.toPhone(chatId)
     const limit = opts?.limit ?? 50
     const page = opts?.page ?? 1
@@ -212,22 +217,18 @@ export class ZapiProvider implements WhatsAppProvider {
     const type = p.audio
       ? 'audioMessage'
       : p.image
-      ? 'imageMessage'
-      : p.document
-      ? 'documentMessage'
-      : p.video
-      ? 'videoMessage'
-      : p.sticker
-      ? 'stickerMessage'
-      : text
-      ? 'conversation'
-      : 'unknown'
+        ? 'imageMessage'
+        : p.document
+          ? 'documentMessage'
+          : p.video
+            ? 'videoMessage'
+            : p.sticker
+              ? 'stickerMessage'
+              : text
+                ? 'conversation'
+                : 'unknown'
     const mediaUrl =
-      p.audio?.audioUrl ??
-      p.image?.imageUrl ??
-      p.document?.documentUrl ??
-      p.video?.videoUrl ??
-      null
+      p.audio?.audioUrl ?? p.image?.imageUrl ?? p.document?.documentUrl ?? p.video?.videoUrl ?? null
 
     const ts = p.momment ?? p.timestamp
     const timestamp = ts
@@ -251,6 +252,8 @@ export class ZapiProvider implements WhatsAppProvider {
   async fetchMedia(options: { messageId?: string; rawPayload?: unknown }): Promise<string | null> {
     const p = options.rawPayload as Record<string, any> | undefined
     if (!p) return null
-    return p.audio?.audioUrl ?? p.image?.imageUrl ?? p.document?.documentUrl ?? p.video?.videoUrl ?? null
+    return (
+      p.audio?.audioUrl ?? p.image?.imageUrl ?? p.document?.documentUrl ?? p.video?.videoUrl ?? null
+    )
   }
 }

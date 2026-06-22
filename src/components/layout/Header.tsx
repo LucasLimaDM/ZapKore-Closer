@@ -57,7 +57,11 @@ export function Header() {
         <LanguageSwitcher />
 
         {/* Notification bell */}
-        <DropdownMenu onOpenChange={(open) => { if (open && unreadCount > 0) markAllRead() }}>
+        <DropdownMenu
+          onOpenChange={(open) => {
+            if (open && unreadCount > 0) markAllRead()
+          }}
+        >
           <DropdownMenuTrigger className="outline-none relative">
             <div className="flex items-center justify-center h-11 w-11 rounded-full border-2 border-border bg-card shadow-subtle hover:scale-105 transition-transform duration-300 cursor-pointer">
               <Bell className="h-4 w-4 text-foreground" />
@@ -75,7 +79,9 @@ export function Header() {
             <div className="px-4 py-3 mb-1 border-b border-border flex items-center justify-between">
               <span className="text-[13px] font-bold text-foreground">Alertas do Agente</span>
               {notifications.length > 0 && (
-                <span className="text-[11px] font-semibold text-muted-foreground">{notifications.length} alerta{notifications.length !== 1 ? 's' : ''}</span>
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  {notifications.length} alerta{notifications.length !== 1 ? 's' : ''}
+                </span>
               )}
             </div>
 
@@ -97,14 +103,24 @@ export function Header() {
                     if (n.contact_id) navigate(`/app/chat/${n.contact_id}`)
                   }}
                 >
-                  <AlertCircle className={cn('h-4 w-4 mt-0.5 shrink-0', !n.read_at ? 'text-destructive' : 'text-muted-foreground')} />
+                  <AlertCircle
+                    className={cn(
+                      'h-4 w-4 mt-0.5 shrink-0',
+                      !n.read_at ? 'text-destructive' : 'text-muted-foreground',
+                    )}
+                  />
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-bold text-foreground leading-tight">{n.title}</p>
                     {n.body && (
-                      <p className="text-[11px] font-medium text-muted-foreground mt-0.5 leading-relaxed break-words">{n.body}</p>
+                      <p className="text-[11px] font-medium text-muted-foreground mt-0.5 leading-relaxed break-words">
+                        {n.body}
+                      </p>
                     )}
                     <p className="text-[10px] font-semibold text-muted-foreground/60 mt-1">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: ptBR })}
+                      {formatDistanceToNow(new Date(n.created_at), {
+                        addSuffix: true,
+                        locale: ptBR,
+                      })}
                     </p>
                   </div>
                 </div>

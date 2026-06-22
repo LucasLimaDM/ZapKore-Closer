@@ -37,14 +37,21 @@ export function useNotifications() {
       .channel('agent_notifications_changes')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'agent_notifications', filter: `user_id=eq.${user.id}` },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'agent_notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
         (payload) => {
           setNotifications((prev) => [payload.new as AgentNotification, ...prev])
         },
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [user, fetch])
 
   const markAllRead = useCallback(async () => {

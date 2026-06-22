@@ -37,7 +37,9 @@ Deno.serve(async (req: Request) => {
     if (action === 'get') {
       const { data: integ } = await supabaseAdmin
         .from('user_integrations')
-        .select('evolution_api_url, evolution_api_key, provider, zapi_instance_id, zapi_instance_token, zapi_client_token')
+        .select(
+          'evolution_api_url, evolution_api_key, provider, zapi_instance_id, zapi_instance_token, zapi_client_token',
+        )
         .eq('user_id', user.id)
         .single()
 
@@ -47,8 +49,12 @@ Deno.serve(async (req: Request) => {
           url: integ?.evolution_api_url ?? null,
           api_key_masked: integ?.evolution_api_key ? maskKey(integ.evolution_api_key) : null,
           zapi_instance_id: integ?.zapi_instance_id ?? null,
-          zapi_instance_token_masked: integ?.zapi_instance_token ? maskKey(integ.zapi_instance_token) : null,
-          zapi_client_token_masked: integ?.zapi_client_token ? maskKey(integ.zapi_client_token) : null,
+          zapi_instance_token_masked: integ?.zapi_instance_token
+            ? maskKey(integ.zapi_instance_token)
+            : null,
+          zapi_client_token_masked: integ?.zapi_client_token
+            ? maskKey(integ.zapi_client_token)
+            : null,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
@@ -83,10 +89,9 @@ Deno.serve(async (req: Request) => {
         .update({ evolution_api_url: cleanUrl, evolution_api_key: api_key, provider: 'evolution' })
         .eq('user_id', user.id)
 
-      return new Response(
-        JSON.stringify({ url: cleanUrl, api_key_masked: maskKey(api_key) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return new Response(JSON.stringify({ url: cleanUrl, api_key_masked: maskKey(api_key) }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     if (action === 'save_zapi') {

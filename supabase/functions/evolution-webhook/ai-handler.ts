@@ -121,7 +121,14 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT provider_credentials_missing userId=${userId} — ${credErr.message}`,
       )
-      await notifyError(supabase, userId, 'provider_credentials_missing', 'Credenciais do provedor não configuradas', credErr.message, contactId)
+      await notifyError(
+        supabase,
+        userId,
+        'provider_credentials_missing',
+        'Credenciais do provedor não configuradas',
+        credErr.message,
+        contactId,
+      )
       return
     }
 
@@ -137,13 +144,15 @@ export async function processAiResponse(
       console.log(
         `[AI Handler] rate_limit_msg_hit contactId=${contactId} count=${contact.msg_count_hour} limit=${integration.rate_limit_msg_per_hour}`,
       )
-      await provider.sendText(
-        contact.remote_jid,
-        integration.rate_limit_message ??
-          'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
-      ).catch((err: any) =>
-        console.error(`[AI Handler] rate_limit_msg_send_failed contactId=${contactId}:`, err),
-      )
+      await provider
+        .sendText(
+          contact.remote_jid,
+          integration.rate_limit_message ??
+            'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+        )
+        .catch((err: any) =>
+          console.error(`[AI Handler] rate_limit_msg_send_failed contactId=${contactId}:`, err),
+        )
       await supabase
         .from('whatsapp_contacts')
         .update({ pipeline_stage: 'Contato Humano', last_message_at: new Date().toISOString() })
@@ -162,7 +171,14 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT agent_load_failed agent_id=${contact.ai_agent_id} supabase_code=${agentError?.code} supabase_message=${agentError?.message} hint=${agentError?.hint ?? 'none'}`,
       )
-      await notifyError(supabase, userId, 'agent_load_failed', 'Falha ao carregar agente de IA', `agent_id=${contact.ai_agent_id} — ${agentError?.message ?? 'agente inativo ou não encontrado'}`, contactId)
+      await notifyError(
+        supabase,
+        userId,
+        'agent_load_failed',
+        'Falha ao carregar agente de IA',
+        `agent_id=${contact.ai_agent_id} — ${agentError?.message ?? 'agente inativo ou não encontrado'}`,
+        contactId,
+      )
       return
     }
 
@@ -176,7 +192,14 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT model_not_configured agent_id=${agent.id} — set a model in Agentes > edit agent`,
       )
-      await notifyError(supabase, userId, 'model_not_configured', 'Modelo não configurado no agente', `Acesse Agentes > editar agente "${agent.name}" e selecione um modelo`, contactId)
+      await notifyError(
+        supabase,
+        userId,
+        'model_not_configured',
+        'Modelo não configurado no agente',
+        `Acesse Agentes > editar agente "${agent.name}" e selecione um modelo`,
+        contactId,
+      )
       return
     }
 
@@ -227,7 +250,14 @@ export async function processAiResponse(
         `[AI Handler] EXIT api_key_missing agent_id=${agent.id} api_key_id=${agent.api_key_id ?? 'NULL'} ` +
           `linked_key_row_present=${agent.user_api_keys !== null} — add an OpenRouter key in Agentes > Chaves de API`,
       )
-      await notifyError(supabase, userId, 'api_key_missing', 'Chave de API ausente', `Adicione uma chave OpenRouter em Configurações > Chaves de API e vincule ao agente "${agent.name}"`, contactId)
+      await notifyError(
+        supabase,
+        userId,
+        'api_key_missing',
+        'Chave de API ausente',
+        `Adicione uma chave OpenRouter em Configurações > Chaves de API e vincule ao agente "${agent.name}"`,
+        contactId,
+      )
       return
     }
 
@@ -375,7 +405,14 @@ export async function processAiResponse(
             (isLast ? '' : ' — trying next fallback'),
         )
         if (isLast) {
-          await notifyError(supabase, userId, 'openrouter_error', 'Erro ao chamar LLM', `model=${candidateModel} status=${openrouterErr?.status ?? 'none'} — ${openrouterErr?.message}`, contactId)
+          await notifyError(
+            supabase,
+            userId,
+            'openrouter_error',
+            'Erro ao chamar LLM',
+            `model=${candidateModel} status=${openrouterErr?.status ?? 'none'} — ${openrouterErr?.message}`,
+            contactId,
+          )
           return
         }
       }
@@ -387,7 +424,14 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT empty_llm_response model=${modelId} finish_reason=${completion.choices[0]?.finish_reason} choices=${JSON.stringify(completion.choices)}`,
       )
-      await notifyError(supabase, userId, 'empty_llm_response', 'LLM retornou resposta vazia', `model=${modelId} finish_reason=${completion.choices[0]?.finish_reason}`, contactId)
+      await notifyError(
+        supabase,
+        userId,
+        'empty_llm_response',
+        'LLM retornou resposta vazia',
+        `model=${modelId} finish_reason=${completion.choices[0]?.finish_reason}`,
+        contactId,
+      )
       return
     }
 
@@ -505,7 +549,14 @@ export async function processAiResponse(
       console.error(
         `[AI Handler] EXIT sendtext_failed dest=${contact.remote_jid} error=${sendErr.message} elapsed=${elapsed()}`,
       )
-      await notifyError(supabase, userId, 'sendtext_failed', 'Falha ao enviar mensagem', `dest=${contact.remote_jid} — ${sendErr.message}`, contactId)
+      await notifyError(
+        supabase,
+        userId,
+        'sendtext_failed',
+        'Falha ao enviar mensagem',
+        `dest=${contact.remote_jid} — ${sendErr.message}`,
+        contactId,
+      )
       return
     }
 
@@ -515,13 +566,15 @@ export async function processAiResponse(
       console.log(
         `[AI Handler] token_limit_hit contactId=${contactId} — sending rate limit message and handoffing`,
       )
-      await provider.sendText(
-        contact.remote_jid,
-        integration.rate_limit_message ??
-          'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
-      ).catch((err: any) =>
-        console.error(`[AI Handler] token_limit_msg_send_failed contactId=${contactId}:`, err),
-      )
+      await provider
+        .sendText(
+          contact.remote_jid,
+          integration.rate_limit_message ??
+            'Identificamos um volume elevado de mensagens e transferiremos seu atendimento para um de nossos atendentes. Em breve você será atendido!',
+        )
+        .catch((err: any) =>
+          console.error(`[AI Handler] token_limit_msg_send_failed contactId=${contactId}:`, err),
+        )
     }
 
     const result = sendResult.raw as any

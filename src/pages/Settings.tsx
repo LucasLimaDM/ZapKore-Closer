@@ -341,8 +341,8 @@ export default function Settings() {
                 </div>
 
                 {/* Evolution Section */}
-                {currentProvider === 'evolution' && (
-                  editingCreds ? (
+                {currentProvider === 'evolution' &&
+                  (editingCreds ? (
                     <div className="flex flex-col gap-4">
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="settings-evo-url">URL da Evolution API</Label>
@@ -373,8 +373,12 @@ export default function Settings() {
                           className="rounded-full px-6 h-10 font-semibold"
                         >
                           {savingCreds ? (
-                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...</>
-                          ) : 'Salvar'}
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                            </>
+                          ) : (
+                            'Salvar'
+                          )}
                         </Button>
                         <Button
                           variant="outline"
@@ -390,15 +394,23 @@ export default function Settings() {
                     <div className="space-y-3">
                       <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 flex flex-col gap-3">
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">URL</span>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            URL
+                          </span>
                           <span className="text-sm font-medium text-foreground truncate">
-                            {credUrl || <span className="text-muted-foreground italic">Não configurado</span>}
+                            {credUrl || (
+                              <span className="text-muted-foreground italic">Não configurado</span>
+                            )}
                           </span>
                         </div>
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">API Key</span>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            API Key
+                          </span>
                           <span className="text-sm font-mono font-medium text-foreground">
-                            {credMasked || <span className="text-muted-foreground italic">Não configurado</span>}
+                            {credMasked || (
+                              <span className="text-muted-foreground italic">Não configurado</span>
+                            )}
                           </span>
                         </div>
                       </div>
@@ -410,12 +422,11 @@ export default function Settings() {
                         Editar
                       </Button>
                     </div>
-                  )
-                )}
+                  ))}
 
                 {/* Z-API Section */}
-                {currentProvider === 'zapi' && (
-                  editingZapi ? (
+                {currentProvider === 'zapi' &&
+                  (editingZapi ? (
                     <div className="flex flex-col gap-4">
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="settings-zapi-id">Instance ID</Label>
@@ -456,8 +467,12 @@ export default function Settings() {
                           className="rounded-full px-6 h-10 font-semibold"
                         >
                           {savingZapi ? (
-                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...</>
-                          ) : 'Salvar'}
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                            </>
+                          ) : (
+                            'Salvar'
+                          )}
                         </Button>
                         <Button
                           variant="outline"
@@ -473,21 +488,33 @@ export default function Settings() {
                     <div className="space-y-3">
                       <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 flex flex-col gap-3">
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Instance ID</span>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Instance ID
+                          </span>
                           <span className="text-sm font-mono font-medium text-foreground">
-                            {zapiInstanceId || <span className="text-muted-foreground italic">Não configurado</span>}
+                            {zapiInstanceId || (
+                              <span className="text-muted-foreground italic">Não configurado</span>
+                            )}
                           </span>
                         </div>
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Instance Token</span>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Instance Token
+                          </span>
                           <span className="text-sm font-mono font-medium text-foreground">
-                            {zapiTokenMasked || <span className="text-muted-foreground italic">Não configurado</span>}
+                            {zapiTokenMasked || (
+                              <span className="text-muted-foreground italic">Não configurado</span>
+                            )}
                           </span>
                         </div>
                         <div className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Client Token</span>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Client Token
+                          </span>
                           <span className="text-sm font-mono font-medium text-foreground">
-                            {zapiClientTokenMasked || <span className="text-muted-foreground italic">Não configurado</span>}
+                            {zapiClientTokenMasked || (
+                              <span className="text-muted-foreground italic">Não configurado</span>
+                            )}
                           </span>
                         </div>
                       </div>
@@ -499,8 +526,7 @@ export default function Settings() {
                         Editar
                       </Button>
                     </div>
-                  )
-                )}
+                  ))}
               </>
             )}
           </CardContent>

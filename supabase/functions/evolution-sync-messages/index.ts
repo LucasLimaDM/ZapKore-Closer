@@ -39,8 +39,15 @@ Deno.serve(async (req: Request) => {
 
     if (!isZapi && !integration.instance_name) throw new Error('Integration not configured')
 
-    const evoUrl = isZapi ? '' : (integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(/\/$/, '')
-    const evoKey = isZapi ? '' : (integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || '')
+    const evoUrl = isZapi
+      ? ''
+      : (integration.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || '').replace(
+          /\/$/,
+          '',
+        )
+    const evoKey = isZapi
+      ? ''
+      : integration.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || ''
 
     if (!isZapi && (!evoUrl || !evoKey)) throw new Error('Evolution API config missing')
 
@@ -87,7 +94,10 @@ Deno.serve(async (req: Request) => {
                   .eq('id', contact.id)
               }
             } catch (contactErr) {
-              console.error(`[ZAPI-SYNC] getLastMessage failed for ${contact.remote_jid}:`, contactErr)
+              console.error(
+                `[ZAPI-SYNC] getLastMessage failed for ${contact.remote_jid}:`,
+                contactErr,
+              )
             }
             processed++
             if (processed % 10 === 0 || processed === contacts.length) {

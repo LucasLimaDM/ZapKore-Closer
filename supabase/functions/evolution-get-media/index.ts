@@ -85,7 +85,11 @@ Deno.serve(async (req: Request) => {
       const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
       return new Response(upstream.body, {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': contentType, 'Cache-Control': 'private, max-age=3600' },
+        headers: {
+          ...corsHeaders,
+          'Content-Type': contentType,
+          'Cache-Control': 'private, max-age=3600',
+        },
       })
     }
 
