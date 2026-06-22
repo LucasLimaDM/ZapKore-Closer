@@ -92,7 +92,7 @@ export const IntegrationProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user])
+  }, [user?.id])
 
   return React.createElement(
     IntegrationContext.Provider,

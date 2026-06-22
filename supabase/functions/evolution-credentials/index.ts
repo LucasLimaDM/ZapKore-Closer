@@ -119,6 +119,14 @@ Deno.serve(async (req: Request) => {
         })
         .eq('user_id', user.id)
 
+      // Pre-register webhook so ConnectedCallback is received when user scans QR
+      try {
+        const webhookUrl = `${supabaseUrl}/functions/v1/zapi-webhook/${user.id}`
+        await provider.configureWebhook(webhookUrl)
+      } catch {
+        // Non-fatal — webhook also configured on first successful QR poll
+      }
+
       return new Response(
         JSON.stringify({
           zapi_instance_id,
